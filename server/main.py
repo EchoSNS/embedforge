@@ -74,9 +74,11 @@ app.add_middleware(
 )
 
 from server.routes import plugins, workflow  # noqa: E402
+from server import ws  # noqa: E402
 
 app.include_router(workflow.router, prefix="/api/workflow", tags=["workflow"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
+app.include_router(ws.router)
 
 from server.ws import router as ws_router  # noqa: E402
 

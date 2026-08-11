@@ -1,76 +1,93 @@
 <template>
   <div class="space-y-4">
     <!-- Progress Bar -->
-    <div class="flex items-center gap-2">
-      <div class="h-2 flex-1 rounded-full bg-secondary">
+    <div class="flex items-center gap-3">
+      <div class="h-1.5 flex-1 rounded-full bg-secondary overflow-hidden">
         <div
-          class="h-full rounded-full bg-primary transition-all duration-500"
+          class="h-full rounded-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-700 ease-out"
+          :class="{ 'animate-shimmer': loading }"
           :style="{ width: `${progress}%` }"
         />
       </div>
-      <span class="text-xs text-muted-foreground">{{ currentStageLabel }}</span>
+      <span class="text-xs font-medium text-muted-foreground whitespace-nowrap">{{ currentStageLabel }}</span>
     </div>
 
     <!-- Stage Cards -->
     <div class="space-y-3">
-      <div
-        v-for="(stage, idx) in stages"
-        :key="stage.key"
-        class="rounded-lg border p-4 transition-all"
-        :class="{
-          'border-primary bg-card': stage.key === activeStage,
-          'opacity-50': idx > activeIndex,
-          'border-green-500/30 bg-green-500/5': idx < activeIndex,
-        }"
-      >
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <span class="flex h-7 w-7 items-center justify-center rounded-full text-xs"
-              :class="{
-                'bg-green-500 text-white': idx < activeIndex,
-                'bg-primary text-primary-foreground': idx === activeIndex,
-                'bg-secondary text-muted-foreground': idx > activeIndex,
-              }"
-            >
-              {{ idx < activeIndex ? '✓' : idx + 1 }}
+      <TransitionGroup name="stagger">
+        <div
+          v-for="(stage, idx) in stages"
+          :key="stage.key"
+          :style="{ transitionDelay: `${idx * 50}ms` }"
+          class="rounded-xl border p-4 transition-all duration-300"
+          :class="{
+            'border-primary/50 bg-card shadow-lg shadow-primary/5 ring-1 ring-primary/20': stage.key === activeStage,
+            'opacity-40 hover:opacity-60': idx > activeIndex,
+            'border-green-500/20 bg-green-500/5': idx < activeIndex,
+          }"
+        >
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span
+                class="flex h-8 w-8 items-center justify-center rounded-full text-xs font-medium transition-all duration-300"
+                :class="{
+                  'bg-green-500 text-white shadow-sm shadow-green-500/30': idx < activeIndex,
+                  'bg-primary text-primary-foreground shadow-sm shadow-primary/30': idx === activeIndex,
+                  'bg-secondary text-muted-foreground': idx > activeIndex,
+                }"
+              >
+                <Transition name="theme-toggle" mode="out-in">
+                  <span v-if="idx < activeIndex" key="check">✓</span>
+                  <span v-else :key="idx">{{ idx + 1 }}</span>
+                </Transition>
+              </span>
+              <h3 class="font-medium">{{ stage.label }}</h3>
+            </div>
+            <span v-if="loading && idx === activeIndex" class="flex items-center gap-1.5 text-xs text-primary">
+              <span class="flex gap-0.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:0ms]" />
+                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:150ms]" />
+                <span class="h-1.5 w-1.5 rounded-full bg-primary animate-bounce [animation-delay:300ms]" />
+              </span>
+              Processing
             </span>
-            <h3 class="font-medium">{{ stage.label }}</h3>
           </div>
-          <span v-if="loading && idx === activeIndex" class="text-xs text-muted-foreground animate-pulse">
-            Processing...
-          </span>
-        </div>
 
-        <!-- Expanded content for active stage -->
-        <div v-if="idx === activeIndex && stageData" class="mt-4 space-y-3">
-          <textarea
-            v-model="editableJson"
-            class="h-64 w-full rounded-md border bg-background p-3 font-mono text-xs"
-            spellcheck="false"
-          />
-          <div class="flex gap-2">
-            <button
-              class="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:opacity-90"
-              :disabled="loading"
-              @click="$emit('approve', nextStageKey)"
-            >
-              ✅ Approve & Continue
-            </button>
-            <button
-              class="rounded-md border px-4 py-2 text-sm hover:bg-accent"
-              :disabled="loading"
-              @click="saveEdit"
-            >
-              💾 Save Edit
-            </button>
-          </div>
-        </div>
+          <!-- Expanded content for active stage -->
+          <Transition name="fade-slide">
+            <div v-if="idx === activeIndex && stageData" class="mt-4 space-y-3">
+              <textarea
+                v-model="editableJson"
+                class="h-64 w-full rounded-lg border bg-background/50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/50 transition-all duration-200 resize-none"
+                spellcheck="false"
+              />
+              <div class="flex gap-2">
+                <button
+                  class="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                  :disabled="loading"
+                  @click="$emit('approve', nextStageKey)"
+                >
+                  ✅ Approve & Continue
+                </button>
+                <button
+                  class="rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                  :disabled="loading"
+                  @click="saveEdit"
+                >
+                  💾 Save Edit
+                </button>
+              </div>
+            </div>
+          </Transition>
 
-        <!-- Collapsed preview for completed stages -->
-        <div v-if="idx < activeIndex && stage.dataKey" class="mt-2">
-          <pre class="max-h-20 overflow-hidden rounded bg-secondary p-2 text-xs text-muted-foreground">{{ JSON.stringify(state[stage.dataKey], null, 2)?.slice(0, 200) }}...</pre>
+          <!-- Collapsed preview for completed stages -->
+          <Transition name="fade-slide">
+            <div v-if="idx < activeIndex && stage.dataKey" class="mt-3">
+              <pre class="max-h-20 overflow-hidden rounded-lg bg-secondary/50 p-2.5 text-xs text-muted-foreground font-mono">{{ JSON.stringify(state[stage.dataKey], null, 2)?.slice(0, 200) }}...</pre>
+            </div>
+          </Transition>
         </div>
-      </div>
+      </TransitionGroup>
     </div>
   </div>
 </template>

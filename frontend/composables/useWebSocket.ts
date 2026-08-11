@@ -3,16 +3,18 @@
  */
 
 import { ref, onUnmounted } from "vue";
-
-const WS_BASE = "ws://localhost:8000";
+import { useRuntimeConfig } from "#app";
 
 export function useWebSocket(sessionId: string) {
+  const config = useRuntimeConfig();
+  const wsBase = (config.public.apiBase as string).replace(/^http/, "ws");
+
   const messages = ref<any[]>([]);
   const connected = ref(false);
   let ws: WebSocket | null = null;
 
   function connect() {
-    ws = new WebSocket(`${WS_BASE}/ws/${sessionId}`);
+    ws = new WebSocket(`${wsBase}/ws/${sessionId}`);
 
     ws.onopen = () => {
       connected.value = true;
