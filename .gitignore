@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environment
+.env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Output
+output/
+outputs_*/
+run_artifacts/
+user_workspaces/
+
+# Models (users download themselves)
+models/
+
+# RAG data
+rag_data/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
