@@ -63,9 +63,37 @@ def _ensure_profiles_dir() -> Path:
     return _PROFILES_DIR
 
 
+def _sanitize_profile_name(profile_name: str) -> str:
+    """Validate profile name as a single safe path component."""
+    if not profile_name:
+        raise HTTPException(400, "Profile name is required")
+    if profile_name in {".", ".."}:
+        raise HTTPException(400, "Invalid profile name")
+    if "/" in profile_name or "\\" in profile_name:
+        raise HTTPException(400, "Invalid profile name")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", profile_name):
+        raise HTTPException(400, "Invalid profile name")
+    return profile_name
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Validate filename as a single safe path component."""
+    if not filename:
+        raise HTTPException(400, "Filename is required")
+    if filename in {".", ".."}:
+        raise HTTPException(400, "Invalid filename")
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(400, "Invalid filename")
+    return filename
+
+
 def _refs_dir_for(profile_name: str) -> Path:
     """Get the references directory for a specific profile."""
-    d = _ensure_profiles_dir() / "references" / profile_name
+    safe_profile_name = _sanitize_profile_name(profile_name)
+    refs_root = (_ensure_profiles_dir() / "references").resolve()
+    d = (refs_root / safe_profile_name).resolve()
+    if refs_root != d.parent and refs_root not in d.parents:
+        raise HTTPException(400, "Invalid profile name")
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -282,8 +310,11 @@ async def activate_profile(filename: str):
 @router.delete("/profiles/{filename}")
 async def delete_profile(filename: str):
     """Delete a profile from the library."""
-    profiles_dir = _ensure_profiles_dir()
-    filepath = profiles_dir / filename
+    safe_filename = _sanitize_filename(filename)
+    profiles_dir = _ensure_profiles_dir().resolve()
+    filepath = (profiles_dir / safe_filename).resolve()
+    if profiles_dir != filepath.parent and profiles_dir not in filepath.parents:
+        raise HTTPException(400, "Invalid profile filename")
     if not filepath.exists():
         raise HTTPException(404, f"Profile not found: {filename}")
     filepath.unlink()
@@ -411,7 +442,11 @@ async def get_profile_references(profile_name: str):
 @router.delete("/reference/{profile_name}/{filename}")
 async def delete_profile_reference(profile_name: str, filename: str):
     """Remove a reference analysis from a profile."""
-    filepath = _refs_dir_for(profile_name) / filename
+    refs_dir = _refs_dir_for(profile_name).resolve()
+    safe_filename = _sanitize_filename(filename)
+    filepath = (refs_dir / safe_filename).resolve()
+    if refs_dir != filepath.parent and refs_dir not in filepath.parents:
+        raise HTTPException(400, "Invalid reference filename")
     if not filepath.exists():
         raise HTTPException(404, f"Reference not found: {filename}")
     filepath.unlink()
