@@ -5,6 +5,7 @@ SDK Management API — scan SDKs, generate/edit capability profiles, analyze ref
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List
@@ -324,11 +325,18 @@ async def analyze_reference(req: ReferenceAnalyzeRequest):
     # Save to profile if specified
     if req.profile_name:
         refs_dir = _refs_dir_for(req.profile_name)
-        slug = Path(req.path).name or "reference"
+        raw_slug = Path(req.path).name or "reference"
+        slug = re.sub(r"[^A-Za-z0-9._-]", "_", raw_slug).strip("._-") or "reference"
         filepath = refs_dir / f"{slug}.json"
-        filepath.write_text(json.dumps(analysis_data, indent=2))
+
+        refs_root = refs_dir.resolve()
+        resolved_filepath = filepath.resolve()
+        if refs_root != resolved_filepath.parent and refs_root not in resolved_filepath.parents:
+            raise HTTPException(400, "Invalid reference filename")
+
+        resolved_filepath.write_text(json.dumps(analysis_data, indent=2))
         log.info(f"Reference saved to profile: {req.profile_name}/{slug}")
-        analysis_data["saved_to"] = f"{req.profile_name}/{filepath.name}"
+        analysis_data["saved_to"] = f"{req.profile_name}/{resolved_filepath.name}"
 
     log.success(
         f"Analysis complete in {elapsed:.1f}s",
