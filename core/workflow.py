@@ -282,12 +282,22 @@ class WorkflowEngine:
         return state
 
     def _invoke_llm(self, system_prompt: str, user_prompt: str) -> str:
+        from server.activity_log import activity_log
+        import time
+
+        activity_log.ai("Sending prompt to LLM…", f"System: {system_prompt[:80]}…")
+        t0 = time.time()
+
         llm = get_llm(temperature=0.1, max_tokens=6000)
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
         ])
-        return response.content
+
+        elapsed = time.time() - t0
+        content = response.content
+        activity_log.ai(f"LLM responded in {elapsed:.1f}s", f"{len(content)} chars")
+        return content
 
     def _parse_json_response(self, response: str) -> Dict[str, Any]:
         """Extract JSON from LLM response, handling markdown code fences."""

@@ -78,6 +78,7 @@ app.add_middleware(
 
 from server.routes import plugins, workflow, sdk  # noqa: E402
 from server import ws  # noqa: E402
+from server.activity_log import activity_log  # noqa: E402
 
 app.include_router(workflow.router, prefix="/api/workflow", tags=["workflow"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
@@ -88,3 +89,14 @@ app.include_router(ws.router)
 @app.get("/health")
 async def health():
     return {"status": "ok", "plugin": _registry.active.name if _registry and _registry.active else None}
+
+
+@app.get("/api/logs/stream")
+async def log_stream():
+    from starlette.responses import StreamingResponse
+    return StreamingResponse(activity_log.subscribe(), media_type="text/event-stream")
+
+
+@app.get("/api/logs/recent")
+async def recent_logs():
+    return activity_log.get_recent(50)

@@ -37,14 +37,21 @@ class ChatMessage(BaseModel):
 
 @router.post("/start")
 async def start_workflow(req: StartRequest):
+    from server.activity_log import activity_log
+
     registry = get_registry()
     engine = WorkflowEngine(registry)
+
+    activity_log.step("New session started", f"Board: {req.board_name}")
+    activity_log.info("Initializing workflow state…")
     state = engine.initialize_state(req.user_input, req.board_name)
 
-    # Auto-run refiner so requirements are immediately available for review
+    activity_log.ai("Auto-refining requirements…", f"Input: {req.user_input[:80]}")
     try:
         state = engine.run_refiner(state)
+        activity_log.success("Requirements refined successfully")
     except Exception as e:
+        activity_log.error("Refiner failed", str(e)[:200])
         state.errors.append(f"Refiner failed: {e}")
 
     _sessions[state.session_id] = state
@@ -60,28 +67,48 @@ async def get_state(session_id: str):
 
 @router.post("/{session_id}/approve/{stage}")
 async def approve_stage(session_id: str, stage: str):
+    from server.activity_log import activity_log
+
     state = _get_session(session_id)
     registry = get_registry()
     engine = WorkflowEngine(registry)
 
+    stage_labels = {
+        "refiner": "Requirements Refinement",
+        "hardware": "Hardware Design",
+        "software_arch": "Software Architecture",
+        "software_detailed": "Detailed Design",
+        "codegen": "Code Generation",
+        "review": "AI Review",
+    }
+    activity_log.step(f"Stage approved: {stage_labels.get(stage, stage)}", f"Session: {session_id[:8]}")
     await broadcast(session_id, {"type": "stage_start", "stage": stage})
 
     try:
         if stage == "refiner" or state.stage == WorkflowStage.CLARIFIER:
+            activity_log.ai("AI is refining requirements…")
             state = engine.run_refiner(state)
         elif stage == "hardware" or state.stage == WorkflowStage.HARDWARE:
+            activity_log.ai("AI is assigning peripherals and pins…")
             state = engine.run_hardware(state)
         elif stage == "software_arch" or state.stage == WorkflowStage.SOFTWARE_ARCH:
+            activity_log.ai("AI is selecting SDK drivers…")
             state = engine.run_software_arch(state)
         elif stage == "software_detailed" or state.stage == WorkflowStage.SOFTWARE_DETAILED:
+            activity_log.ai("AI is creating function-level design…")
             state = engine.run_software_detailed(state)
         elif stage == "codegen" or state.stage == WorkflowStage.CODEGEN:
+            activity_log.ai("AI is generating C code via TDD pipeline…")
             state = engine.run_codegen(state)
         elif stage == "review" or state.stage == WorkflowStage.REVIEW:
+            activity_log.ai("AI is reviewing generated code…")
             state = engine.run_review(state)
         else:
             raise HTTPException(400, f"Unknown stage: {stage}")
+
+        activity_log.success(f"Stage complete: {stage_labels.get(stage, stage)}")
     except Exception as e:
+        activity_log.error(f"Stage failed: {stage}", str(e)[:200])
         await broadcast(session_id, {"type": "error", "message": str(e)})
         raise HTTPException(500, str(e))
 

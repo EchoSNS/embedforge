@@ -158,6 +158,11 @@
               <li v-for="(err, i) in currentSession.errors" :key="i" class="text-xs text-muted-foreground">• {{ err }}</li>
             </ul>
           </div>
+
+          <!-- Activity Log (visible when session active or loading) -->
+          <div v-if="currentSession || loading" class="mt-4">
+            <ActivityLog />
+          </div>
         </div>
 
         <!-- Code Viewer Panel -->

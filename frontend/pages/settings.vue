@@ -212,6 +212,14 @@
           </div>
         </template>
 
+        <!-- Activity Log (always visible) -->
+        <ActivityLog />
+
+        <!-- Error display -->
+        <div v-if="error" class="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+          {{ error }}
+        </div>
+
       </div>
     </div>
   </div>
