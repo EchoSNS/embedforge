@@ -122,14 +122,12 @@ const stages = [
 ];
 
 const activeIndex = computed(() => {
-  const stage = props.state?.stage;
-  // Stay on requirements review until hardware_spec is populated
-  if (stage === "hardware") {
-    const hwSpec = props.state?.hardware_spec;
-    if (!hwSpec || !Object.keys(hwSpec).length) return 0;
+  // A stage is active when it has data but the next stage doesn't
+  for (let i = stages.length - 1; i >= 0; i--) {
+    const data = props.state?.[stages[i].dataKey];
+    if (data && Object.keys(data).length) return i;
   }
-  const idx = stages.findIndex((s) => s.key === stage);
-  return idx >= 0 ? idx : 0;
+  return 0;
 });
 
 const activeStage = computed(() => stages[activeIndex.value]?.key || "requirements");
