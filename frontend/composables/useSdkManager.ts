@@ -78,13 +78,13 @@ export function useSdkManager() {
     }
   }
 
-  async function analyzeReference(path: string) {
+  async function analyzeReference(path: string, profileName: string = "") {
     error.value = null;
     try {
       const res = await fetch(`${apiBase}/api/sdk/reference/analyze`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, profile_name: profileName }),
       });
       if (!res.ok) throw new Error(await res.text());
       return await res.json();
@@ -93,16 +93,90 @@ export function useSdkManager() {
     }
   }
 
-  async function uploadReferenceFiles(files: FileList) {
+  async function uploadReferenceFiles(files: FileList, profileName: string = "") {
     error.value = null;
     const formData = new FormData();
     for (const f of files) {
       formData.append("files", f);
     }
+    const url = profileName
+      ? `${apiBase}/api/sdk/reference/upload?profile_name=${encodeURIComponent(profileName)}`
+      : `${apiBase}/api/sdk/reference/upload`;
     try {
-      const res = await fetch(`${apiBase}/api/sdk/reference/upload`, {
+      const res = await fetch(url, { method: "POST", body: formData });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+    }
+  }
+
+  // ─── Profile Library ──────────────────────────────────────────────────
+
+  async function listProfiles() {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/profiles`);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+      return [];
+    }
+  }
+
+  async function saveProfileToLibrary(name: string, profileData: any) {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/profiles/save`, {
         method: "POST",
-        body: formData,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, profile: profileData }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+    }
+  }
+
+  async function activateProfile(filename: string) {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/profiles/activate/${encodeURIComponent(filename)}`, {
+        method: "POST",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+    }
+  }
+
+  async function deleteProfile(filename: string) {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/profiles/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+    }
+  }
+
+  async function listProfileReferences(profileName: string) {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/reference/${encodeURIComponent(profileName)}`);
+      if (!res.ok) throw new Error(await res.text());
+      return await res.json();
+    } catch (e: any) {
+      error.value = e.message;
+      return [];
+    }
+  }
+
+  async function deleteProfileReference(profileName: string, filename: string) {
+    try {
+      const res = await fetch(`${apiBase}/api/sdk/reference/${encodeURIComponent(profileName)}/${encodeURIComponent(filename)}`, {
+        method: "DELETE",
       });
       if (!res.ok) throw new Error(await res.text());
       return await res.json();
@@ -123,5 +197,11 @@ export function useSdkManager() {
     updateProfile,
     analyzeReference,
     uploadReferenceFiles,
+    listProfiles,
+    saveProfileToLibrary,
+    activateProfile,
+    deleteProfile,
+    listProfileReferences,
+    deleteProfileReference,
   };
 }
