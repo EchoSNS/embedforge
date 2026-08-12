@@ -59,7 +59,7 @@ async def _handle_chat(session_id: str, message: str, websocket: WebSocket) -> N
             f"Session context:\n{context}"
         )
 
-        llm = get_llm(temperature=0.3, max_tokens=500)
+        llm = get_llm(max_tokens=2000)
         response = llm.invoke([
             SystemMessage(content=system),
             HumanMessage(content=message),

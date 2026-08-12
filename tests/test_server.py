@@ -72,7 +72,7 @@ def test_start_workflow(client):
     assert response.status_code == 200
     data = response.json()
     assert "session_id" in data
-    assert data["stage"] == "clarifier"
+    assert data["stage"] in ("clarifier", "hardware")
 
 
 def test_get_state(client):

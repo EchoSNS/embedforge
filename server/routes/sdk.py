@@ -44,8 +44,21 @@ class ProfileUpdateRequest(BaseModel):
     profile: Dict[str, Any]
 
 
+class ProfileSaveRequest(BaseModel):
+    name: str
+    profile: Dict[str, Any]
+
+
 class ReferenceAnalyzeRequest(BaseModel):
     path: str
+
+
+_PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles"
+
+
+def _ensure_profiles_dir() -> Path:
+    _PROFILES_DIR.mkdir(exist_ok=True)
+    return _PROFILES_DIR
 
 
 # ─── SDK Scanning ───────────────────────────────────────────────────────────
@@ -138,7 +151,18 @@ async def generate_profile(req: ProfileGenerateRequest):
 
         periph_count = len(profile_data.get("peripherals", {}))
         log.success(f"Profile generated in {elapsed:.1f}s", f"{periph_count} peripherals detected")
-        return {"profile": profile_data, "status": "generated"}
+
+        # Auto-save to library
+        vendor_slug = (req.vendor_name or "unknown").lower().replace(" ", "_")
+        sdk_slug = (req.sdk_name or "sdk").lower().replace(" ", "_")
+        profiles_dir = _ensure_profiles_dir()
+        auto_name = f"{vendor_slug}_{sdk_slug}"
+        (profiles_dir / f"{auto_name}.yaml").write_text(
+            yaml.dump(profile_data, default_flow_style=False, sort_keys=False)
+        )
+        log.info(f"Auto-saved to library as {auto_name}.yaml")
+
+        return {"profile": profile_data, "status": "generated", "saved_as": f"{auto_name}.yaml"}
 
     except Exception as e:
         log.error("Profile generation failed", str(e))
@@ -185,6 +209,73 @@ async def update_profile(req: ProfileUpdateRequest):
 
     log.success("Profile saved", str(profile_path))
     return {"status": "updated"}
+
+
+# ─── Profile Library ────────────────────────────────────────────────────────
+
+
+@router.get("/profiles")
+async def list_profiles():
+    """List all saved profiles in the library."""
+    profiles_dir = _ensure_profiles_dir()
+    profiles = []
+    for f in sorted(profiles_dir.glob("*.yaml")):
+        try:
+            data = yaml.safe_load(f.read_text())
+            profiles.append({
+                "filename": f.name,
+                "vendor": data.get("vendor", "Unknown"),
+                "sdk": data.get("sdk", "Unknown"),
+                "sdk_version": data.get("sdk_version", ""),
+                "peripherals_count": len(data.get("peripherals", {})),
+            })
+        except Exception:
+            profiles.append({"filename": f.name, "vendor": "Error", "sdk": "Could not parse"})
+    return profiles
+
+
+@router.post("/profiles/save")
+async def save_profile(req: ProfileSaveRequest):
+    """Save a profile to the library."""
+    profiles_dir = _ensure_profiles_dir()
+    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in req.name)
+    filepath = profiles_dir / f"{safe_name}.yaml"
+    filepath.write_text(yaml.dump(req.profile, default_flow_style=False, sort_keys=False))
+    log.success(f"Profile saved to library: {safe_name}")
+    return {"status": "saved", "filename": filepath.name}
+
+
+@router.post("/profiles/activate/{filename}")
+async def activate_profile(filename: str):
+    """Copy a library profile to the active plugin's profile.yaml."""
+    profiles_dir = _ensure_profiles_dir()
+    source = profiles_dir / filename
+    if not source.exists():
+        raise HTTPException(404, f"Profile not found: {filename}")
+
+    registry = _get_registry()
+    manifest = registry._require_active()
+    plugin_dir = Path(__file__).resolve().parent.parent.parent / "plugins" / manifest.name
+    target = plugin_dir / "profile.yaml"
+
+    target.write_text(source.read_text())
+    cache_key = f"__profile__{manifest.name}"
+    registry._instances.pop(cache_key, None)
+
+    log.success(f"Activated profile: {filename}")
+    return {"status": "activated"}
+
+
+@router.delete("/profiles/{filename}")
+async def delete_profile(filename: str):
+    """Delete a profile from the library."""
+    profiles_dir = _ensure_profiles_dir()
+    filepath = profiles_dir / filename
+    if not filepath.exists():
+        raise HTTPException(404, f"Profile not found: {filename}")
+    filepath.unlink()
+    log.info(f"Deleted profile: {filename}")
+    return {"status": "deleted"}
 
 
 # ─── Reference Analysis ─────────────────────────────────────────────────────

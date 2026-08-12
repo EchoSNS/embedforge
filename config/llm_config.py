@@ -56,7 +56,7 @@ class LLMSettings:
         return bool(self.api_key and self.model)
 
 
-def get_llm(temperature: float = 0.1, max_tokens: int = 4000, settings: Optional[LLMSettings] = None):
+def get_llm(temperature: float | None = None, max_tokens: int = 16000, settings: Optional[LLMSettings] = None):
     """
     Factory that returns a LangChain chat model for the configured provider.
 
@@ -75,29 +75,29 @@ def get_llm(temperature: float = 0.1, max_tokens: int = 4000, settings: Optional
     if settings.provider == "azure":
         from langchain_openai import AzureChatOpenAI
 
-        return AzureChatOpenAI(
-            azure_endpoint=settings.endpoint,
-            api_key=settings.api_key,
-            api_version=settings.api_version,
-            azure_deployment=settings.model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        # Some Azure deployments (e.g. o-series, gpt-5-mini) don't support temperature
+        kwargs: dict = {
+            "azure_endpoint": settings.endpoint,
+            "api_key": settings.api_key,
+            "api_version": settings.api_version,
+            "azure_deployment": settings.model,
+            "max_tokens": max_tokens,
+        }
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+
+        return AzureChatOpenAI(**kwargs)
     elif settings.provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
-        return ChatAnthropic(
-            model=settings.model,
-            api_key=settings.api_key,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        kwargs = {"model": settings.model, "api_key": settings.api_key, "max_tokens": max_tokens}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatAnthropic(**kwargs)
     else:
         from langchain_openai import ChatOpenAI
 
-        return ChatOpenAI(
-            model=settings.model,
-            api_key=settings.api_key,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+        kwargs = {"model": settings.model, "api_key": settings.api_key, "max_tokens": max_tokens}
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        return ChatOpenAI(**kwargs)

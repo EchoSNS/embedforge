@@ -95,7 +95,7 @@ class ProfileGenerator:
             "Generate the capability profile JSON."
         )
 
-        llm = get_llm(temperature=0.1, max_tokens=4000)
+        llm = get_llm(max_tokens=16000)
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
