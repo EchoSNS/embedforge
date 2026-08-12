@@ -9,6 +9,9 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -73,16 +76,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from server.routes import plugins, workflow  # noqa: E402
+from server.routes import plugins, workflow, sdk  # noqa: E402
 from server import ws  # noqa: E402
 
 app.include_router(workflow.router, prefix="/api/workflow", tags=["workflow"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
+app.include_router(sdk.router, prefix="/api/sdk", tags=["sdk"])
 app.include_router(ws.router)
-
-from server.ws import router as ws_router  # noqa: E402
-
-app.include_router(ws_router)
 
 
 @app.get("/health")

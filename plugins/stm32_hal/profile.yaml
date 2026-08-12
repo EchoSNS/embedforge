@@ -1,0 +1,158 @@
+# STM32 HAL Capability Profile
+# Declarative manifest of SDK capabilities for LLM-guided code generation
+
+vendor: STMicroelectronics
+sdk: STM32 HAL
+sdk_version: "1.27.0"
+supported_families:
+  - STM32F4
+  - STM32F7
+  - STM32H7
+
+peripherals:
+  PWM:
+    instances: [TIM1, TIM2, TIM3, TIM4, TIM5, TIM8, TIM9, TIM10, TIM11, TIM12]
+    features:
+      - complementary_outputs
+      - dead_time_insertion
+      - break_input
+      - encoder_mode
+      - one_pulse_mode
+      - repetition_counter
+      - dma_burst
+    max_channels_per_instance: 4
+    advanced_instances: [TIM1, TIM8]
+    general_purpose: [TIM2, TIM3, TIM4, TIM5]
+    notes:
+      - "TIM1/TIM8 are advanced-control timers with complementary outputs and break"
+      - "TIM2/TIM5 are 32-bit counters for long-period timing"
+      - "TIM3/TIM4 are 16-bit general-purpose with 4 channels each"
+
+  ADC:
+    instances: [ADC1, ADC2, ADC3]
+    features:
+      - multi_mode
+      - injected_channels
+      - analog_watchdog
+      - dma
+      - oversampling
+      - continuous_mode
+      - scan_mode
+    max_channels_per_instance: 16
+    resolution_bits: [6, 8, 10, 12]
+    max_sample_rate_msps: 2.4
+    notes:
+      - "ADC1 is the primary ADC; ADC2/ADC3 support multi-mode"
+      - "Use DMA for continuous high-speed conversion"
+
+  UART:
+    instances: [USART1, USART2, USART3, UART4, UART5, USART6]
+    features:
+      - interrupt_driven
+      - dma
+      - hardware_flow_control
+      - lin_mode
+      - smartcard
+      - irda
+      - half_duplex
+    max_baud_rate: 10500000
+    notes:
+      - "USART1/USART6 are on APB2 (higher clock, higher max baud)"
+      - "UART4/UART5 have no hardware flow control"
+
+  SPI:
+    instances: [SPI1, SPI2, SPI3, SPI4, SPI5, SPI6]
+    features:
+      - full_duplex
+      - half_duplex
+      - simplex
+      - dma
+      - interrupt
+      - crc
+      - ti_mode
+    max_clock_mhz: 42
+    data_sizes: [8, 16]
+
+  I2C:
+    instances: [I2C1, I2C2, I2C3]
+    features:
+      - master_mode
+      - slave_mode
+      - dma
+      - interrupt
+      - 10bit_addressing
+      - general_call
+      - smbus
+    speed_modes:
+      - standard: 100000
+      - fast: 400000
+      - fast_plus: 1000000
+
+  GPIO:
+    modes: [INPUT, OUTPUT_PP, OUTPUT_OD, AF_PP, AF_OD, ANALOG]
+    pull: [NOPULL, PULLUP, PULLDOWN]
+    speed: [LOW, MEDIUM, FAST, HIGH]
+    notes:
+      - "Each pin has up to 16 alternate functions (AF0-AF15)"
+      - "Always enable RCC clock before configuring GPIO port"
+
+  DMA:
+    instances: [DMA1, DMA2]
+    streams_per_instance: 8
+    channels_per_stream: 8
+    features:
+      - circular_mode
+      - double_buffer
+      - fifo
+      - burst_transfer
+      - memory_to_memory
+    priorities: [LOW, MEDIUM, HIGH, VERY_HIGH]
+
+patterns:
+  init_sequence:
+    - "HAL_Init()"
+    - "SystemClock_Config()"
+    - "__HAL_RCC_GPIOx_CLK_ENABLE()"
+    - "HAL_GPIO_Init()"
+    - "Peripheral-specific init (HAL_TIM_PWM_Init, HAL_ADC_Init, etc.)"
+    - "HAL_NVIC_SetPriority() + HAL_NVIC_EnableIRQ()"
+    - "Start peripheral (HAL_TIM_PWM_Start, HAL_ADC_Start_DMA, etc.)"
+
+  naming_conventions:
+    config_struct_suffix: "_InitTypeDef"
+    handle_struct_suffix: "_HandleTypeDef"
+    hal_prefix: "HAL_"
+    interrupt_handler_suffix: "_IRQHandler"
+    msp_init_suffix: "_MspInit"
+    gpio_pin_format: "GPIO_PIN_{n}"
+    port_format: "GPIO{letter}"
+    alternate_function_format: "GPIO_AF{n}_{PERIPHERAL}"
+
+  error_handling:
+    - "Always check HAL_StatusTypeDef return value (HAL_OK, HAL_ERROR, HAL_BUSY, HAL_TIMEOUT)"
+    - "Implement Error_Handler() for unrecoverable failures"
+    - "Use assert_param() in debug builds"
+
+  file_structure:
+    main.c: "Entry point, init calls, main loop"
+    stm32f4xx_hal_msp.c: "MSP (MCU Support Package) init — GPIO, DMA, NVIC for peripherals"
+    stm32f4xx_it.c: "Interrupt handlers"
+    system_stm32f4xx.c: "System clock configuration"
+
+constraints:
+  - "TIM1 and TIM8 share update IRQ with TIM10/TIM13 respectively"
+  - "ADC1/ADC2/ADC3 share a common IRQ (ADC_IRQn)"
+  - "DMA streams are shared across peripherals — check reference manual for conflicts"
+  - "APB1 timer clock is 2x APB1 bus clock when APB1 prescaler > 1"
+  - "APB2 timer clock is 2x APB2 bus clock when APB2 prescaler > 1"
+  - "Maximum 16 EXTI lines — one per pin number across all ports"
+  - "HSE crystal accuracy affects UART baud rate precision"
+
+clock_tree:
+  hse_range_mhz: [4, 26]
+  typical_hse_mhz: 8
+  max_sysclk_mhz: 168
+  apb1_max_mhz: 42
+  apb2_max_mhz: 84
+  pll_input_range_mhz: [1, 2]
+  pll_vco_range_mhz: [100, 432]

@@ -79,6 +79,48 @@ class CompilationResult:
 
 
 @dataclass
+class CapabilityProfile:
+    """Declarative manifest of SDK capabilities loaded from profile.yaml."""
+
+    vendor: str
+    sdk: str
+    sdk_version: str
+    supported_families: List[str]
+    peripherals: Dict[str, Dict[str, Any]]
+    patterns: Dict[str, Any]
+    constraints: List[str]
+    clock_tree: Dict[str, Any] = field(default_factory=dict)
+    reference_snippets: Dict[str, str] = field(default_factory=dict)
+
+    def get_peripheral_context(self, peripheral_type: str) -> str:
+        """Format peripheral capabilities as LLM-injectable context."""
+        p = self.peripherals.get(peripheral_type.upper(), {})
+        if not p:
+            return f"No profile data for {peripheral_type}"
+        lines = [f"=== {peripheral_type.upper()} Capabilities ==="]
+        for k, v in p.items():
+            lines.append(f"  {k}: {v}")
+        return "\n".join(lines)
+
+    def get_patterns_context(self) -> str:
+        """Format SDK patterns as LLM-injectable context."""
+        import json
+        return json.dumps(self.patterns, indent=2)
+
+    def get_constraints_context(self) -> str:
+        """Format constraints as LLM-injectable context."""
+        return "\n".join(f"- {c}" for c in self.constraints)
+
+    def get_reference_snippet(self, peripheral_type: str) -> Optional[str]:
+        """Return a golden reference snippet for a peripheral type if available."""
+        key = peripheral_type.lower()
+        for name, content in self.reference_snippets.items():
+            if key in name.lower():
+                return content
+        return None
+
+
+@dataclass
 class BoardConfig:
     """Board-level configuration metadata."""
 
@@ -357,6 +399,43 @@ class PluginRegistry:
     def list_boards(self) -> List[str]:
         manifest = self._require_active()
         return list(manifest.board_template_classes.keys())
+
+    def get_capability_profile(self) -> Optional[CapabilityProfile]:
+        """Load the active plugin's capability profile from profile.yaml."""
+        manifest = self._require_active()
+        cache_key = f"__profile__{manifest.name}"
+        if cache_key in self._instances:
+            return self._instances[cache_key]
+
+        import yaml
+        plugin_dir = Path(__file__).parent / manifest.name.replace(".", "/")
+        profile_path = plugin_dir / "profile.yaml"
+        if not profile_path.exists():
+            return None
+
+        with open(profile_path, "r") as f:
+            data = yaml.safe_load(f)
+
+        # Load reference snippets
+        snippets: Dict[str, str] = {}
+        snippets_dir = plugin_dir / "reference_snippets"
+        if snippets_dir.is_dir():
+            for snippet_file in snippets_dir.glob("*.c"):
+                snippets[snippet_file.stem] = snippet_file.read_text()
+
+        profile = CapabilityProfile(
+            vendor=data.get("vendor", ""),
+            sdk=data.get("sdk", ""),
+            sdk_version=data.get("sdk_version", ""),
+            supported_families=data.get("supported_families", []),
+            peripherals=data.get("peripherals", {}),
+            patterns=data.get("patterns", {}),
+            constraints=data.get("constraints", []),
+            clock_tree=data.get("clock_tree", {}),
+            reference_snippets=snippets,
+        )
+        self._instances[cache_key] = profile
+        return profile
 
     def _require_active(self) -> PluginManifest:
         if not self._active_plugin or self._active_plugin not in self._plugins:

@@ -40,7 +40,15 @@ async def start_workflow(req: StartRequest):
     registry = get_registry()
     engine = WorkflowEngine(registry)
     state = engine.initialize_state(req.user_input, req.board_name)
+
+    # Auto-run refiner so requirements are immediately available for review
+    try:
+        state = engine.run_refiner(state)
+    except Exception as e:
+        state.errors.append(f"Refiner failed: {e}")
+
     _sessions[state.session_id] = state
+    await broadcast(state.session_id, {"type": "stage_complete", "stage": "refiner"})
     return {"session_id": state.session_id, "stage": state.stage.value}
 
 
@@ -87,17 +95,21 @@ async def approve_stage(session_id: str, stage: str):
 async def edit_stage(session_id: str, stage: str, req: EditRequest):
     state = _get_session(session_id)
 
-    if stage == "requirements":
-        state.requirements = req.data
-    elif stage == "hardware":
-        state.hardware_spec = req.data
-    elif stage == "software_arch":
-        state.software_arch = req.data
-    elif stage == "software_detailed":
-        state.software_detailed = req.data
-    else:
+    # Accept both stage names and data key names from frontend
+    stage_map = {
+        "requirements": "requirements",
+        "hardware": "hardware_spec",
+        "hardware_spec": "hardware_spec",
+        "software_arch": "software_arch",
+        "software_architecture": "software_arch",
+        "software_detailed": "software_detailed",
+    }
+
+    target = stage_map.get(stage)
+    if not target:
         raise HTTPException(400, f"Cannot edit stage: {stage}")
 
+    setattr(state, target, req.data)
     _sessions[session_id] = state
     return {"ok": True}
 
@@ -121,6 +133,60 @@ async def download_code(session_id: str):
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=embedforge_output.zip"},
     )
+
+
+@router.post("/{session_id}/validate")
+async def validate_code(session_id: str):
+    """Run code validation (pins, includes, rules) without compilation."""
+    from core.code_validator import CodeValidator
+
+    state = _get_session(session_id)
+    if not state.generated_code:
+        raise HTTPException(400, "No generated code to validate")
+
+    registry = get_registry()
+    validator = CodeValidator(registry)
+    report = validator.validate(state.generated_code)
+
+    return {
+        "passed": report.passed,
+        "errors": report.errors,
+        "warnings": report.warnings,
+        "pin_issues": report.pin_issues,
+        "missing_headers": report.missing_headers,
+        "rule_violations": report.rule_violations,
+    }
+
+
+@router.post("/{session_id}/build")
+async def build_code(session_id: str):
+    """Attempt to compile generated code using the plugin's compiler backend."""
+    from services.build_service import BuildRequest, LocalBuildService
+
+    state = _get_session(session_id)
+    if not state.generated_code:
+        raise HTTPException(400, "No generated code to build")
+
+    registry = get_registry()
+    build_svc = LocalBuildService(registry)
+
+    if not build_svc.is_available():
+        return {"success": False, "log": "Compiler toolchain not available on this machine"}
+
+    request = BuildRequest(
+        source_files=state.generated_code,
+        board_name=state.board_name,
+    )
+    response = build_svc.build(request)
+
+    state.build_result = {
+        "success": response.success,
+        "log": response.log,
+    }
+    _sessions[session_id] = state
+
+    await broadcast(session_id, {"type": "build_complete", "success": response.success})
+    return {"success": response.success, "log": response.log}
 
 
 def _get_session(session_id: str) -> WorkflowState:

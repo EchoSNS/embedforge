@@ -34,3 +34,14 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Frontend build artifacts
+node_modules/
+.nuxt/
+.output/
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+
+# uv lock
+uv.lock
