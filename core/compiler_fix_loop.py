@@ -168,7 +168,7 @@ class CompilerFixLoop:
 
         # Decrease temperature on later iterations for more conservative fixes
         temp = max(0.0, 0.3 - (iteration * 0.05))
-        llm = get_llm(temperature=temp, max_tokens=8000)
+        llm = get_llm()
 
         try:
             response = llm.invoke([

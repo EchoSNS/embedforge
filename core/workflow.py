@@ -288,7 +288,7 @@ class WorkflowEngine:
         activity_log.ai("Sending prompt to LLM…", f"System: {system_prompt[:80]}…")
         t0 = time.time()
 
-        llm = get_llm(max_tokens=16000)
+        llm = get_llm()
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),
