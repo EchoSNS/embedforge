@@ -17,19 +17,20 @@
 git clone https://github.com/EchoSNS/embedforge.git
 cd embedforge
 
-# Create virtual environment
+# Option 1: Using uv (recommended)
+uv sync
+
+# Option 2: Using pip
 python -m venv .venv
 source .venv/bin/activate  # Linux/Mac
 # or: .venv\Scripts\Activate.ps1  # Windows PowerShell
-
-# Install
 pip install -e .
 
 # Optional: RAG support
-pip install -e ".[rag]"
+uv pip install -e ".[rag]"
 
 # Optional: Development tools
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 ### Option B: Docker
@@ -104,12 +105,27 @@ To use a different vendor SDK (not STM32), create a plugin:
 3. Set `EMBEDFORGE_PLUGIN=your_sdk` in `.env`
 4. Restart the app
 
+## SDK Scanner (Auto-Generate Plugin Data)
+
+Instead of manually writing plugin code, you can use the SDK Scanner to auto-generate capability profiles:
+
+1. Navigate to **Settings** (gear icon in sidebar)
+2. Enter the path to your SDK headers (e.g. `C:/STM32CubeF4/Drivers/STM32F4xx_HAL_Driver/Inc`)
+3. Click **Scan** — the system extracts all functions, types, and macros
+4. Enter vendor/SDK name, then click **Generate Profile**
+5. The LLM analyzes the extracted metadata and creates a structured profile
+6. Review and edit the generated profile in the Profile Editor tab
+
+You can also upload reference `.c/.h` projects in the Reference Analyzer tab to improve code generation quality.
+
 ## Troubleshooting
 
 | Issue | Solution |
 |-------|----------|
-| "LLM not configured" | Check `.env` has valid API key |
+| "LLM not configured" | Check `.env` has valid API key and correct `LLM_PROVIDER` |
 | "No active plugin" | Set `EMBEDFORGE_PLUGIN=stm32_hal` in `.env` |
+| "No module named dotenv" | Run `uv pip install python-dotenv` or `uv sync` |
 | Compilation fails | Install `arm-none-eabi-gcc` and set `STM32CUBE_F4_PATH` |
-| Import errors | Run `pip install -e .` from project root |
+| Import errors | Run `uv sync` from project root |
 | Slow generation | Use `gpt-4o` instead of `gpt-4` for faster (cheaper) results |
+| `uv add` fails | Ensure `[tool.hatch.build.targets.wheel]` exists in pyproject.toml |

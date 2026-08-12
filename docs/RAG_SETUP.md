@@ -46,27 +46,6 @@ for chunk in results:
     print(chunk[:200])
 ```
 
-## Advanced Setup: Neo4j (Graph RAG)
-
-For large documentation corpora with entity relationships:
-
-```bash
-# Start Neo4j
-docker run -d -p 7687:7687 -p 7474:7474 \
-  -e NEO4J_AUTH=neo4j/password \
-  neo4j:5
-
-# Install neo4j dependencies
-pip install neo4j langchain-neo4j
-```
-
-Configure in `.env`:
-```env
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=password
-```
-
 ## File Types Supported
 
 | Format | Extension | Notes |

@@ -21,6 +21,10 @@ EmbedForge uses a multi-stage LLM pipeline with human-in-the-loop approval gates
 - **AI code review** — automated review against SDK architecture rules
 - **Pin validation** — catches invalid pin references before compilation
 - **Multi-LLM support** — OpenAI, Azure OpenAI, Anthropic (Claude)
+- **SDK Scanner** — point to any vendor SDK, auto-extract API metadata
+- **Capability Profile Generator** — LLM-assisted profile creation from SDK headers
+- **Reference Analyzer** — upload existing C projects to extract patterns
+- **LLM-powered Chat** — context-aware assistant during pipeline stages
 - **Optional RAG** — enhance context with vendor documentation (PDF/markdown)
 
 ## Architecture
@@ -59,7 +63,8 @@ graph TD
 ```bash
 git clone https://github.com/EchoSNS/embedforge.git
 cd embedforge
-pip install -e .
+uv venv
+uv pip install -e .
 ```
 
 ### 2. Configure
@@ -72,7 +77,7 @@ cp .env.example .env
 ### 3. Run Backend
 
 ```bash
-uvicorn server.main:app --reload
+uv run uvicorn server.main:app --reload
 ```
 
 ### 4. Run Frontend
@@ -123,29 +128,38 @@ See [docs/PLUGIN_DEVELOPMENT.md](docs/PLUGIN_DEVELOPMENT.md) for the full guide.
 embedforge/
 ├── app.py                  # Entry point (uvicorn launcher)
 ├── server/                 # FastAPI backend (REST + WebSocket)
-├── frontend/               # Nuxt 3 dashboard (Tailwind + shadcn-vue)
+│   ├── main.py             # App factory, CORS, plugin loading
+│   ├── ws.py               # WebSocket (LLM-powered chat + progress)
+│   └── routes/
+│       ├── workflow.py     # Pipeline start/approve/edit/build/validate
+│       ├── plugins.py      # Board/driver discovery
+│       └── sdk.py          # SDK scan, profile generate/edit, reference upload
+├── frontend/               # Nuxt 3 dashboard (Tailwind + Lucide)
+│   ├── pages/
+│   │   ├── index.vue       # Main workspace (prompt → pipeline → code)
+│   │   └── settings.vue    # SDK Scanner, Profile Editor, Reference Analyzer
+│   ├── components/         # UI components (pipeline, chat, code viewer)
+│   └── composables/        # API composables (useWorkflow, useSdkManager)
 ├── core/                   # Workflow engine & core services
 │   ├── workflow.py         # State machine (pipeline orchestration)
-│   ├── driver_catalog.py   # Driver lookup service
-│   ├── driver_selector.py  # Scoring-based driver selection
-│   ├── mcu_capabilities.py # Pin/peripheral queries
-│   ├── sdk_analyzer.py     # Header file parser
+│   ├── profile_generator.py # LLM-assisted capability profile generation
+│   ├── sdk_analyzer.py     # SDK header parser (any C SDK)
 │   ├── reference_analyzer.py # Reference project pattern extraction
 │   ├── tdd_generator.py    # TDD code generation pipeline
 │   ├── compiler_fix_loop.py # LLM-driven compilation error repair
 │   ├── code_validator.py   # Pre-compilation validation
 │   ├── pin_validator.py    # Pin symbol validation
 │   ├── ai_reviewer.py      # AI code review
-│   ├── architecture_rules.py # Rule enforcement service
-│   ├── compiler.py         # Compiler service wrapper
 │   └── dynamic_prompts.py  # Runtime prompt builder
 ├── plugins/                # Vendor SDK plugins
-│   ├── base.py             # Interface definitions (ABCs)
-│   └── stm32_hal/          # Bundled STM32 HAL example
-├── prompts/                # Stage system prompts
+│   ├── base.py             # Interface definitions + CapabilityProfile
+│   └── stm32_hal/          # Bundled STM32 HAL plugin
+│       ├── profile.yaml    # Capability profile (peripherals, patterns)
+│       └── reference_snippets/ # Golden code examples
+├── prompts/                # Stage system prompts (source of truth)
 ├── config/                 # LLM & app configuration
 ├── services/               # Build service abstraction
-├── rag/                    # Optional RAG module
+├── rag/                    # Optional RAG module (ChromaDB)
 ├── unity/                  # Unity C test framework
 ├── docs/                   # Documentation
 ├── examples/               # Example inputs/outputs

@@ -35,6 +35,31 @@ EmbedForge is a multi-stage agentic AI pipeline that generates embedded C firmwa
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Capability Profiles
+
+Each plugin can declare a `profile.yaml` manifest that describes SDK capabilities declaratively:
+
+```yaml
+vendor: STMicroelectronics
+sdk: STM32 HAL
+peripherals:
+  PWM:
+    instances: [TIM1, TIM2, TIM3]
+    features: [complementary_outputs, dead_time]
+patterns:
+  init_sequence: [HAL_Init, SystemClock_Config, GPIO_Init, ...]
+  naming_conventions: {config_struct_suffix: "_InitTypeDef"}
+constraints:
+  - "TIM1/TIM8 are advanced-control timers"
+```
+
+Profiles can be:
+- **Hand-written** by SDK experts
+- **Auto-generated** from SDK headers using the SDK Scanner + Profile Generator
+- **LLM-assisted** — the system infers capabilities from function signatures
+
+The `CapabilityProfile` is injected into LLM prompts at each stage for grounded generation.
+
 ## Data Flow
 
 ```mermaid
