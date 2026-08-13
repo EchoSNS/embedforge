@@ -410,8 +410,12 @@ async def upload_reference(files: List[UploadFile] = File(...), profile_name: st
     }
 
     if profile_name:
-        refs_dir = _refs_dir_for(profile_name)
-        filepath = refs_dir / "uploaded.json"
+        refs_dir = _refs_dir_for(profile_name).resolve()
+        filepath = (refs_dir / "uploaded.json").resolve()
+        try:
+            filepath.relative_to(refs_dir)
+        except ValueError:
+            raise HTTPException(400, "Invalid profile path")
         filepath.write_text(json.dumps(analysis_data, indent=2))
         log.info(f"Upload reference saved to profile: {profile_name}")
         analysis_data["saved_to"] = f"{profile_name}/uploaded.json"
