@@ -95,8 +95,6 @@ def _refs_dir_for(profile_name: str) -> Path:
 
     # Resolve via known subdirectories first to avoid relying directly on
     # request-provided path fragments in path construction.
-    known_profiles = {p.name: p.resolve() for p in refs_root.iterdir() if p.is_dir()}
-    d = known_profiles.get(safe_profile_name)
     if d is None:
         # Preserve existing behavior: create a new directory for a valid profile.
         d = (refs_root / safe_profile_name).resolve()
