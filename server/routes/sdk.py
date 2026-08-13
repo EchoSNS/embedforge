@@ -460,11 +460,11 @@ async def delete_profile_reference(profile_name: str, filename: str):
     refs_dir = _refs_dir_for(profile_name).resolve()
     try:
         filepath.relative_to(refs_dir)
+    safe_filename = _sanitize_filename(filename)
+    filepath = (refs_dir / safe_filename).resolve()
     except ValueError:
     filepath = (refs_dir / safe_filename).resolve()
     if refs_dir != filepath.parent and refs_dir not in filepath.parents:
-        raise HTTPException(400, "Invalid reference filename")
-    if not filepath.exists():
         raise HTTPException(404, f"Reference not found: {filename}")
     filepath.unlink()
     log.info(f"Deleted reference {filename} from profile {profile_name}")
