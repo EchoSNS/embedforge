@@ -92,7 +92,9 @@ def _refs_dir_for(profile_name: str) -> Path:
     safe_profile_name = _sanitize_profile_name(profile_name)
     refs_root = (_ensure_profiles_dir() / "references").resolve()
     d = (refs_root / safe_profile_name).resolve()
-    if refs_root != d.parent and refs_root not in d.parents:
+    try:
+        d.relative_to(refs_root)
+    except ValueError:
         raise HTTPException(400, "Invalid profile name")
     d.mkdir(parents=True, exist_ok=True)
     return d
