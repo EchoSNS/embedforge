@@ -91,7 +91,16 @@ def _refs_dir_for(profile_name: str) -> Path:
     """Get the references directory for a specific profile."""
     safe_profile_name = _sanitize_profile_name(profile_name)
     refs_root = (_ensure_profiles_dir() / "references").resolve()
-    d = (refs_root / safe_profile_name).resolve()
+    refs_root.mkdir(parents=True, exist_ok=True)
+
+    # Resolve via known subdirectories first to avoid relying directly on
+    # request-provided path fragments in path construction.
+    known_profiles = {p.name: p.resolve() for p in refs_root.iterdir() if p.is_dir()}
+    d = known_profiles.get(safe_profile_name)
+    if d is None:
+        # Preserve existing behavior: create a new directory for a valid profile.
+        d = (refs_root / safe_profile_name).resolve()
+
     try:
         d.relative_to(refs_root)
     except ValueError:
