@@ -371,9 +371,11 @@ async def analyze_reference(req: ReferenceAnalyzeRequest):
         slug = re.sub(r"[^A-Za-z0-9._-]", "_", raw_slug).strip("._-") or "reference"
         filepath = refs_dir / f"{slug}.json"
 
-        refs_root = refs_dir.resolve()
-        resolved_filepath = filepath.resolve()
-        if refs_root != resolved_filepath.parent and refs_root not in resolved_filepath.parents:
+        refs_root = refs_dir.resolve(strict=False)
+        resolved_filepath = filepath.resolve(strict=False)
+        try:
+            resolved_filepath.relative_to(refs_root)
+        except ValueError:
             raise HTTPException(400, "Invalid reference filename")
 
         resolved_filepath.write_text(json.dumps(analysis_data, indent=2))
