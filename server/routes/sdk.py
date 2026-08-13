@@ -95,6 +95,8 @@ def _refs_dir_for(profile_name: str) -> Path:
     try:
         d.relative_to(refs_root)
     except ValueError:
+        d.relative_to(refs_root)
+    except ValueError:
         raise HTTPException(400, "Invalid profile name")
     d.mkdir(parents=True, exist_ok=True)
     return d
@@ -449,7 +451,9 @@ async def get_profile_references(profile_name: str):
 async def delete_profile_reference(profile_name: str, filename: str):
     """Remove a reference analysis from a profile."""
     refs_dir = _refs_dir_for(profile_name).resolve()
-    safe_filename = _sanitize_filename(filename)
+    try:
+        filepath.relative_to(refs_dir)
+    except ValueError:
     filepath = (refs_dir / safe_filename).resolve()
     if refs_dir != filepath.parent and refs_dir not in filepath.parents:
         raise HTTPException(400, "Invalid reference filename")
