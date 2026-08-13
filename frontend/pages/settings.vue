@@ -130,12 +130,20 @@
                 <p class="text-sm font-medium">{{ profile.vendor }} — {{ profile.sdk }}</p>
                 <p class="text-xs text-muted-foreground">v{{ profile.sdk_version }}</p>
               </div>
-              <button
-                class="rounded-lg border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
-                @click="saveProfile"
-              >
-                Save Changes
-              </button>
+              <div class="flex gap-2">
+                <button
+                  class="rounded-lg border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                  @click="saveProfile"
+                >
+                  Save Changes
+                </button>
+                <button
+                  class="rounded-lg border px-3 py-1.5 text-xs hover:bg-accent transition-colors"
+                  @click="saveToLibrary"
+                >
+                  Save to Library
+                </button>
+              </div>
             </div>
             <div class="p-4">
               <textarea
@@ -147,14 +155,72 @@
           </div>
         </template>
 
+        <!-- Profile Library Tab -->
+        <template v-if="activeTab === 'library'">
+          <div class="space-y-1">
+            <h2 class="text-xl font-bold">Profile Library</h2>
+            <p class="text-sm text-muted-foreground">Manage saved profiles from different vendor SDKs. Activate the one you want to use.</p>
+          </div>
+
+          <div v-if="!profilesList.length" class="rounded-xl border border-dashed bg-card p-8 text-center space-y-2">
+            <Library class="h-8 w-8 mx-auto text-muted-foreground" />
+            <p class="text-sm text-muted-foreground">No profiles saved yet. Scan an SDK and generate a profile first.</p>
+          </div>
+
+          <div v-else class="space-y-2">
+            <div
+              v-for="p in profilesList"
+              :key="p.filename"
+              class="rounded-xl border bg-card p-4 flex items-center justify-between hover:border-primary/30 transition-colors"
+            >
+              <div class="flex-1">
+                <p class="text-sm font-medium">{{ p.vendor }} — {{ p.sdk }}</p>
+                <div class="flex gap-3 mt-1">
+                  <span class="text-xs text-muted-foreground">{{ p.sdk_version }}</span>
+                  <span class="text-xs text-muted-foreground">{{ p.peripherals_count }} peripherals</span>
+                  <span class="text-xs text-muted-foreground">{{ p.references_count || 0 }} references</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  class="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-all"
+                  @click="doActivateProfile(p.filename)"
+                >
+                  Activate
+                </button>
+                <button
+                  class="rounded-lg border px-3 py-1.5 text-xs text-destructive hover:bg-destructive/5 transition-colors"
+                  @click="doDeleteProfile(p.filename)"
+                >
+                  <Trash2 class="h-3 w-3" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- Reference Analyzer Tab -->
         <template v-if="activeTab === 'reference'">
           <div class="space-y-1">
             <h2 class="text-xl font-bold">Reference Analyzer</h2>
-            <p class="text-sm text-muted-foreground">Upload or point to existing C projects to extract coding patterns that improve generation quality.</p>
+            <p class="text-sm text-muted-foreground">Upload or point to existing C projects. References are tied to a profile to avoid cross-vendor contamination.</p>
           </div>
 
           <div class="rounded-xl border bg-card p-4 space-y-4">
+            <!-- Profile selector for scoping -->
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">Attach to Profile (optional)</label>
+              <select
+                v-model="refProfileName"
+                class="w-full rounded-lg border bg-background p-2 text-xs focus:ring-2 focus:ring-ring focus:outline-none"
+              >
+                <option value="">None (unscoped)</option>
+                <option v-for="p in profilesList" :key="p.filename" :value="p.filename.replace('.yaml', '')">
+                  {{ p.vendor }} — {{ p.sdk }}
+                </option>
+              </select>
+            </div>
+
             <!-- Path-based analysis -->
             <div class="space-y-2">
               <label class="text-xs font-medium text-muted-foreground">Project Path</label>
@@ -191,21 +257,32 @@
               <input ref="fileInput" type="file" multiple accept=".c,.h" class="hidden" @change="handleFileSelect" />
             </div>
 
+            <!-- Saved references for selected profile -->
+            <Transition name="fade-slide">
+              <div v-if="refProfileName && profileRefs.length" class="border-t pt-4 space-y-2">
+                <p class="text-xs font-medium text-muted-foreground">Saved References for this Profile</p>
+                <div v-for="r in profileRefs" :key="r.filename" class="flex items-center justify-between rounded-lg bg-secondary/50 px-3 py-2 text-xs">
+                  <div>
+                    <span class="font-medium">{{ r.filename }}</span>
+                    <span class="text-muted-foreground ml-2">{{ r.files_analyzed }} files · {{ r.functions_count }} functions</span>
+                  </div>
+                  <button class="text-destructive hover:text-destructive/80" @click="doDeleteRef(r.filename)">
+                    <Trash2 class="h-3 w-3" />
+                  </button>
+                </div>
+              </div>
+            </Transition>
+
             <!-- Results -->
             <Transition name="fade-slide">
               <div v-if="refResult" class="border-t pt-4 space-y-2">
                 <p class="text-xs font-medium">Analysis Results</p>
                 <div class="flex flex-wrap gap-2">
-                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">
-                    {{ refResult.files_analyzed }} files
-                  </div>
-                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">
-                    {{ refResult.functions_defined?.length || 0 }} functions
-                  </div>
-                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">
-                    {{ refResult.functions_called?.length || 0 }} SDK calls
-                  </div>
+                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">{{ refResult.files_analyzed }} files</div>
+                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">{{ refResult.functions_defined?.length || 0 }} functions</div>
+                  <div class="rounded-lg bg-secondary px-3 py-1.5 text-xs">{{ refResult.functions_called?.length || 0 }} SDK calls</div>
                 </div>
+                <div v-if="refResult.saved_to" class="text-xs text-primary">Saved to: {{ refResult.saved_to }}</div>
                 <pre class="rounded-lg bg-secondary/50 p-3 text-xs font-mono max-h-48 overflow-auto">{{ JSON.stringify(refResult.patterns, null, 2) }}</pre>
               </div>
             </Transition>
@@ -227,12 +304,14 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from "vue";
-import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2 } from "lucide-vue-next";
+import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2 } from "lucide-vue-next";
 import { useSdkManager } from "~/composables/useSdkManager";
 
 const {
   scanning, generating, scanResult, profile, error,
   scanSdk, generateProfile, fetchProfile, updateProfile, analyzeReference, uploadReferenceFiles,
+  listProfiles, saveProfileToLibrary, activateProfile, deleteProfile,
+  listProfileReferences, deleteProfileReference,
 } = useSdkManager();
 
 const activeTab = ref("scan");
@@ -240,13 +319,17 @@ const sdkPath = ref("");
 const vendorName = ref("");
 const sdkName = ref("");
 const refPath = ref("");
+const refProfileName = ref("");
 const refResult = ref<any>(null);
 const profileJson = ref("");
+const profilesList = ref<any[]>([]);
+const profileRefs = ref<any[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 
 const tabs = [
   { id: "scan", label: "SDK Scanner", icon: FolderSearch },
-  { id: "profile", label: "Capability Profile", icon: FileCode },
+  { id: "profile", label: "Active Profile", icon: FileCode },
+  { id: "library", label: "Profile Library", icon: Library },
   { id: "reference", label: "Reference Analyzer", icon: Settings2 },
 ];
 
@@ -254,10 +337,22 @@ watch(profile, (p) => {
   if (p) profileJson.value = JSON.stringify(p, null, 2);
 });
 
-onMounted(() => loadProfile());
+watch(refProfileName, async (name) => {
+  if (name) profileRefs.value = await listProfileReferences(name);
+  else profileRefs.value = [];
+});
+
+onMounted(async () => {
+  await loadProfile();
+  await refreshProfiles();
+});
 
 async function loadProfile() {
   await fetchProfile();
+}
+
+async function refreshProfiles() {
+  profilesList.value = await listProfiles();
 }
 
 async function runScan() {
@@ -266,19 +361,38 @@ async function runScan() {
 
 async function runGenerate() {
   await generateProfile(sdkPath.value, vendorName.value, sdkName.value);
+  await refreshProfiles();
 }
 
 async function saveProfile() {
   try {
     const data = JSON.parse(profileJson.value);
     await updateProfile(data);
-  } catch {
-    // invalid JSON
-  }
+  } catch { /* invalid JSON */ }
+}
+
+async function saveToLibrary() {
+  try {
+    const data = JSON.parse(profileJson.value);
+    const name = `${data.vendor || "unknown"}_${data.sdk || "sdk"}`.toLowerCase().replace(/\s+/g, "_");
+    await saveProfileToLibrary(name, data);
+    await refreshProfiles();
+  } catch { /* invalid JSON */ }
+}
+
+async function doActivateProfile(filename: string) {
+  await activateProfile(filename);
+  await loadProfile();
+}
+
+async function doDeleteProfile(filename: string) {
+  await deleteProfile(filename);
+  await refreshProfiles();
 }
 
 async function runRefAnalysis() {
-  refResult.value = await analyzeReference(refPath.value);
+  refResult.value = await analyzeReference(refPath.value, refProfileName.value);
+  if (refProfileName.value) profileRefs.value = await listProfileReferences(refProfileName.value);
 }
 
 function handleFileSelect(e: Event) {
@@ -291,6 +405,12 @@ function handleDrop(e: DragEvent) {
 }
 
 async function uploadFiles(files: FileList) {
-  refResult.value = await uploadReferenceFiles(files);
+  refResult.value = await uploadReferenceFiles(files, refProfileName.value);
+  if (refProfileName.value) profileRefs.value = await listProfileReferences(refProfileName.value);
+}
+
+async function doDeleteRef(filename: string) {
+  await deleteProfileReference(refProfileName.value, filename);
+  profileRefs.value = await listProfileReferences(refProfileName.value);
 }
 </script>

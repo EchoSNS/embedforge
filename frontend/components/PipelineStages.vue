@@ -25,7 +25,7 @@
             :style="{ transitionDelay: `${idx * 50}ms` }"
             class="rounded-xl border p-4 pl-12 relative transition-all duration-300"
             :class="{
-              'border-primary/50 bg-card shadow-lg shadow-primary/5 ring-1 ring-primary/20': stage.key === activeStage,
+              'border-primary/50 bg-card shadow-lg shadow-primary/5 ring-1 ring-primary/20': idx === activeIndex,
               'opacity-40 hover:opacity-60': idx > activeIndex,
               'border-green-500/20 bg-green-500/5': idx < activeIndex,
             }"
@@ -61,7 +61,7 @@
               <div v-if="idx === activeIndex && stageData" class="mt-4 space-y-3">
                 <textarea
                   v-model="editableJson"
-                  class="h-64 w-full rounded-lg border bg-background/50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/50 transition-all duration-200 resize-none"
+                  class="min-h-[16rem] max-h-[28rem] w-full rounded-lg border bg-background/50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/50 transition-all duration-200"
                   spellcheck="false"
                 />
                 <div class="flex gap-2">
@@ -113,6 +113,7 @@ const emit = defineEmits<{
 }>();
 
 const stages = [
+  { key: "requirements", label: "Requirements", description: "Review the AI-refined requirements before proceeding", dataKey: "requirements", nextApprove: "hardware", icon: FileText },
   { key: "hardware", label: "Hardware Design", description: "Assigning peripherals, pins, and clocks", dataKey: "hardware_spec", nextApprove: "software_arch", icon: Cpu },
   { key: "software_architecture", label: "Software Architecture", description: "Selecting SDK drivers and defining structure", dataKey: "software_arch", nextApprove: "software_detailed", icon: Layers },
   { key: "software_detailed", label: "Detailed Design", description: "Function-level design with SDK calls", dataKey: "software_detailed", nextApprove: "codegen", icon: Braces },
@@ -121,11 +122,15 @@ const stages = [
 ];
 
 const activeIndex = computed(() => {
-  const idx = stages.findIndex((s) => s.key === props.state?.stage);
-  return idx >= 0 ? idx : 0;
+  // A stage is active when it has data but the next stage doesn't
+  for (let i = stages.length - 1; i >= 0; i--) {
+    const data = props.state?.[stages[i].dataKey];
+    if (data && Object.keys(data).length) return i;
+  }
+  return 0;
 });
 
-const activeStage = computed(() => props.state?.stage || "hardware");
+const activeStage = computed(() => stages[activeIndex.value]?.key || "requirements");
 const currentStageLabel = computed(() => stages[activeIndex.value]?.label || "");
 const progress = computed(() => ((activeIndex.value + 1) / stages.length) * 100);
 const nextStageKey = computed(() => stages[activeIndex.value]?.nextApprove || "");

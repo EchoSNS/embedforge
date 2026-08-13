@@ -56,7 +56,7 @@ class LLMSettings:
         return bool(self.api_key and self.model)
 
 
-def get_llm(temperature: float | None = None, max_tokens: int = 16000, settings: Optional[LLMSettings] = None):
+def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = None):
     """
     Factory that returns a LangChain chat model for the configured provider.
 
@@ -75,13 +75,11 @@ def get_llm(temperature: float | None = None, max_tokens: int = 16000, settings:
     if settings.provider == "azure":
         from langchain_openai import AzureChatOpenAI
 
-        # Some Azure deployments (e.g. o-series, gpt-5-mini) don't support temperature
         kwargs: dict = {
             "azure_endpoint": settings.endpoint,
             "api_key": settings.api_key,
             "api_version": settings.api_version,
             "azure_deployment": settings.model,
-            "max_tokens": max_tokens,
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
@@ -90,14 +88,14 @@ def get_llm(temperature: float | None = None, max_tokens: int = 16000, settings:
     elif settings.provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
 
-        kwargs = {"model": settings.model, "api_key": settings.api_key, "max_tokens": max_tokens}
+        kwargs = {"model": settings.model, "api_key": settings.api_key}
         if temperature is not None:
             kwargs["temperature"] = temperature
         return ChatAnthropic(**kwargs)
     else:
         from langchain_openai import ChatOpenAI
 
-        kwargs = {"model": settings.model, "api_key": settings.api_key, "max_tokens": max_tokens}
+        kwargs = {"model": settings.model, "api_key": settings.api_key}
         if temperature is not None:
             kwargs["temperature"] = temperature
         return ChatOpenAI(**kwargs)

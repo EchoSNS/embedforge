@@ -129,10 +129,6 @@
           <!-- Active Pipeline -->
           <Transition name="fade-slide" appear>
             <div v-if="currentSession && !loading">
-              <RequirementsSummary
-                v-if="currentSession.requirements && Object.keys(currentSession.requirements).length"
-                :requirements="currentSession.requirements"
-              />
               <PipelineStages
                 :state="currentSession"
                 :loading="stageLoading"

@@ -5,6 +5,7 @@ SDK Management API — scan SDKs, generate/edit capability profiles, analyze ref
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
 from typing import Any, Dict, List
@@ -51,6 +52,7 @@ class ProfileSaveRequest(BaseModel):
 
 class ReferenceAnalyzeRequest(BaseModel):
     path: str
+    profile_name: str = ""
 
 
 _PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles"
@@ -59,6 +61,52 @@ _PROFILES_DIR = Path(__file__).resolve().parent.parent.parent / "profiles"
 def _ensure_profiles_dir() -> Path:
     _PROFILES_DIR.mkdir(exist_ok=True)
     return _PROFILES_DIR
+
+
+def _sanitize_profile_name(profile_name: str) -> str:
+    """Validate profile name as a single safe path component."""
+    if not profile_name:
+        raise HTTPException(400, "Profile name is required")
+    if profile_name in {".", ".."}:
+        raise HTTPException(400, "Invalid profile name")
+    if "/" in profile_name or "\\" in profile_name:
+        raise HTTPException(400, "Invalid profile name")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", profile_name):
+        raise HTTPException(400, "Invalid profile name")
+    return profile_name
+
+
+def _sanitize_filename(filename: str) -> str:
+    """Validate filename as a single safe path component."""
+    if not filename:
+        raise HTTPException(400, "Filename is required")
+    if filename in {".", ".."}:
+        raise HTTPException(400, "Invalid filename")
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(400, "Invalid filename")
+    return filename
+
+
+def _refs_dir_for(profile_name: str) -> Path:
+    """Get the references directory for a specific profile."""
+    safe_profile_name = _sanitize_profile_name(profile_name)
+    refs_root = (_ensure_profiles_dir() / "references").resolve()
+    refs_root.mkdir(parents=True, exist_ok=True)
+
+    # Resolve via known subdirectories first to avoid relying directly on
+    # request-provided path fragments in path construction.
+    if d is None:
+        # Preserve existing behavior: create a new directory for a valid profile.
+        d = (refs_root / safe_profile_name).resolve()
+
+    try:
+        d.relative_to(refs_root)
+    except ValueError:
+        d.relative_to(refs_root)
+    except ValueError:
+        raise HTTPException(400, "Invalid profile name")
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 # ─── SDK Scanning ───────────────────────────────────────────────────────────
@@ -218,16 +266,20 @@ async def update_profile(req: ProfileUpdateRequest):
 async def list_profiles():
     """List all saved profiles in the library."""
     profiles_dir = _ensure_profiles_dir()
+    refs_base = profiles_dir / "references"
     profiles = []
     for f in sorted(profiles_dir.glob("*.yaml")):
         try:
             data = yaml.safe_load(f.read_text())
+            name_stem = f.stem
+            ref_count = len(list((refs_base / name_stem).glob("*.json"))) if (refs_base / name_stem).exists() else 0
             profiles.append({
                 "filename": f.name,
                 "vendor": data.get("vendor", "Unknown"),
                 "sdk": data.get("sdk", "Unknown"),
                 "sdk_version": data.get("sdk_version", ""),
                 "peripherals_count": len(data.get("peripherals", {})),
+                "references_count": ref_count,
             })
         except Exception:
             profiles.append({"filename": f.name, "vendor": "Error", "sdk": "Could not parse"})
@@ -269,8 +321,11 @@ async def activate_profile(filename: str):
 @router.delete("/profiles/{filename}")
 async def delete_profile(filename: str):
     """Delete a profile from the library."""
-    profiles_dir = _ensure_profiles_dir()
-    filepath = profiles_dir / filename
+    safe_filename = _sanitize_filename(filename)
+    profiles_dir = _ensure_profiles_dir().resolve()
+    filepath = (profiles_dir / safe_filename).resolve()
+    if profiles_dir != filepath.parent and profiles_dir not in filepath.parents:
+        raise HTTPException(400, "Invalid profile filename")
     if not filepath.exists():
         raise HTTPException(404, f"Profile not found: {filename}")
     filepath.unlink()
@@ -278,12 +333,12 @@ async def delete_profile(filename: str):
     return {"status": "deleted"}
 
 
-# ─── Reference Analysis ─────────────────────────────────────────────────────
+# ─── Reference Analysis (profile-scoped) ────────────────────────────────────
 
 
 @router.post("/reference/analyze")
 async def analyze_reference(req: ReferenceAnalyzeRequest):
-    """Analyze a reference C project at the given path."""
+    """Analyze a reference C project and optionally tie it to a profile."""
     ref_path = Path(req.path)
     if not ref_path.exists():
         log.error("Reference path not found", req.path)
@@ -296,13 +351,7 @@ async def analyze_reference(req: ReferenceAnalyzeRequest):
     result = analyzer.analyze(req.path)
     elapsed = time.time() - t0
 
-    log.success(
-        f"Analysis complete in {elapsed:.1f}s",
-        f"{result.files_analyzed} files · {len(result.functions_defined)} functions · "
-        f"{len(result.functions_called)} SDK calls",
-    )
-
-    return {
+    analysis_data = {
         "files_analyzed": result.files_analyzed,
         "includes": result.includes[:50],
         "functions_defined": [
@@ -312,12 +361,37 @@ async def analyze_reference(req: ReferenceAnalyzeRequest):
         "functions_called": result.functions_called[:100],
         "peripherals_used": result.peripherals_used,
         "patterns": result.patterns,
+        "source_path": req.path,
     }
+
+    # Save to profile if specified
+    if req.profile_name:
+        refs_dir = _refs_dir_for(req.profile_name)
+        raw_slug = Path(req.path).name or "reference"
+        slug = re.sub(r"[^A-Za-z0-9._-]", "_", raw_slug).strip("._-") or "reference"
+        filepath = refs_dir / f"{slug}.json"
+
+        refs_root = refs_dir.resolve(strict=False)
+        resolved_filepath = filepath.resolve(strict=False)
+        try:
+            resolved_filepath.relative_to(refs_root)
+        except ValueError:
+            raise HTTPException(400, "Invalid reference filename")
+
+        resolved_filepath.write_text(json.dumps(analysis_data, indent=2))
+        log.info(f"Reference saved to profile: {req.profile_name}/{slug}")
+        analysis_data["saved_to"] = f"{req.profile_name}/{resolved_filepath.name}"
+
+    log.success(
+        f"Analysis complete in {elapsed:.1f}s",
+        f"{result.files_analyzed} files · {len(result.functions_defined)} functions",
+    )
+    return analysis_data
 
 
 @router.post("/reference/upload")
-async def upload_reference(files: List[UploadFile] = File(...)):
-    """Upload reference C/H files for analysis."""
+async def upload_reference(files: List[UploadFile] = File(...), profile_name: str = ""):
+    """Upload reference C/H files for analysis, optionally tied to a profile."""
     filenames = [f.filename for f in files if f.filename]
     log.step(f"Uploading {len(files)} reference files", ", ".join(filenames[:5]))
 
@@ -335,9 +409,8 @@ async def upload_reference(files: List[UploadFile] = File(...)):
         raise HTTPException(400, "No valid .c or .h files uploaded")
 
     result = analyzer.analyze_files(file_contents)
-    log.success(f"Upload analysis complete", f"{result.files_analyzed} files parsed")
 
-    return {
+    analysis_data = {
         "files_analyzed": result.files_analyzed,
         "includes": result.includes,
         "functions_defined": [
@@ -348,6 +421,56 @@ async def upload_reference(files: List[UploadFile] = File(...)):
         "peripherals_used": result.peripherals_used,
         "patterns": result.patterns,
     }
+
+    if profile_name:
+        refs_dir = _refs_dir_for(profile_name).resolve()
+        filepath = (refs_dir / "uploaded.json").resolve()
+        try:
+            filepath.relative_to(refs_dir)
+        except ValueError:
+            raise HTTPException(400, "Invalid profile path")
+        filepath.write_text(json.dumps(analysis_data, indent=2))
+        log.info(f"Upload reference saved to profile: {profile_name}")
+        analysis_data["saved_to"] = f"{profile_name}/uploaded.json"
+
+    log.success(f"Upload analysis complete", f"{result.files_analyzed} files parsed")
+    return analysis_data
+
+
+@router.get("/reference/{profile_name}")
+async def get_profile_references(profile_name: str):
+    """Get all reference analyses tied to a specific profile."""
+    refs_dir = _refs_dir_for(profile_name)
+    references = []
+    for f in sorted(refs_dir.glob("*.json")):
+        try:
+            data = json.loads(f.read_text())
+            references.append({
+                "filename": f.name,
+                "files_analyzed": data.get("files_analyzed", 0),
+                "functions_count": len(data.get("functions_defined", [])),
+                "source_path": data.get("source_path", "uploaded"),
+            })
+        except Exception:
+            pass
+    return references
+
+
+@router.delete("/reference/{profile_name}/{filename}")
+async def delete_profile_reference(profile_name: str, filename: str):
+    """Remove a reference analysis from a profile."""
+    refs_dir = _refs_dir_for(profile_name).resolve()
+    try:
+        filepath.relative_to(refs_dir)
+    safe_filename = _sanitize_filename(filename)
+    filepath = (refs_dir / safe_filename).resolve()
+    except ValueError:
+    filepath = (refs_dir / safe_filename).resolve()
+    if refs_dir != filepath.parent and refs_dir not in filepath.parents:
+        raise HTTPException(404, f"Reference not found: {filename}")
+    filepath.unlink()
+    log.info(f"Deleted reference {filename} from profile {profile_name}")
+    return {"status": "deleted"}
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

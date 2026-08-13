@@ -188,7 +188,7 @@ class TDDGenerator:
         return self._invoke_and_parse(system_prompt, user_prompt)
 
     def _invoke_and_parse(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, str]]:
-        llm = get_llm(temperature=0.2, max_tokens=8000)
+        llm = get_llm()
         try:
             response = llm.invoke([
                 SystemMessage(content=system_prompt),

@@ -90,7 +90,7 @@ class AIReviewer:
             f"Review this code."
         )
 
-        llm = get_llm(temperature=0.1, max_tokens=4000)
+        llm = get_llm()
 
         try:
             response = llm.invoke([
