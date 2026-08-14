@@ -9,9 +9,6 @@ import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
-load_dotenv()
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -32,21 +29,25 @@ def get_registry() -> PluginRegistry:
 def _load_plugins(settings: AppSettings) -> PluginRegistry:
     registry = PluginRegistry()
     plugin_dir = settings.plugins_dir
+    logger.info("Scanning plugins directory: %s", plugin_dir)
     for candidate in plugin_dir.iterdir():
         if candidate.is_dir() and (candidate / "__init__.py").exists():
             try:
                 module = importlib.import_module(f"plugins.{candidate.name}")
                 if hasattr(module, "register"):
                     module.register(registry)
+                    logger.info("Loaded plugin: %s", candidate.name)
             except Exception as e:
-                logger.warning(f"Failed to load plugin {candidate.name}: {e}")
+                logger.warning("Failed to load plugin %s: %s", candidate.name, e)
 
     if settings.plugin_name and registry._plugins:
         try:
             registry.activate(settings.plugin_name)
+            logger.info("Activated plugin: %s", settings.plugin_name)
         except ValueError:
             first = next(iter(registry._plugins))
             registry.activate(first)
+            logger.warning("Plugin '%s' not found, activated fallback: %s", settings.plugin_name, first)
 
     return registry
 
@@ -76,13 +77,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from server.routes import plugins, workflow, sdk  # noqa: E402
+from server.routes import plugins, workflow, sdk, flash  # noqa: E402
 from server import ws  # noqa: E402
 from server.activity_log import activity_log  # noqa: E402
 
 app.include_router(workflow.router, prefix="/api/workflow", tags=["workflow"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
 app.include_router(sdk.router, prefix="/api/sdk", tags=["sdk"])
+app.include_router(flash.router, prefix="/api/flash", tags=["flash"])
 app.include_router(ws.router)
 
 

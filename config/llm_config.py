@@ -29,24 +29,39 @@ class LLMSettings:
         provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
         if provider == "azure":
+            endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "").rstrip("/")
+            deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4")
+            api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")
+            logger.info(
+                "LLM config: provider=azure, endpoint=%s, deployment=%s, api_version=%s",
+                endpoint.split("//")[-1].split("/")[0] if endpoint else "(empty)",
+                deployment,
+                api_version,
+            )
+            if not endpoint:
+                logger.warning("AZURE_OPENAI_ENDPOINT is empty — check .env")
             return cls(
                 provider=provider,
                 api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-                endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"),
+                model=deployment,
+                endpoint=endpoint,
+                api_version=api_version,
             )
         elif provider == "anthropic":
+            model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+            logger.info("LLM config: provider=anthropic, model=%s", model)
             return cls(
                 provider=provider,
                 api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-                model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-20250514"),
+                model=model,
             )
         else:
+            model = os.getenv("OPENAI_MODEL", "gpt-4")
+            logger.info("LLM config: provider=openai, model=%s", model)
             return cls(
                 provider="openai",
                 api_key=os.getenv("OPENAI_API_KEY", ""),
-                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                model=model,
             )
 
     @property

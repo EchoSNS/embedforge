@@ -52,7 +52,7 @@
 
 <script setup lang="ts">
 import { watch, ref, nextTick, onMounted } from "vue";
-import { Terminal, Trash2, ChevronsDown, Info, CheckCircle2, AlertTriangle, XCircle, Brain, ChevronRight } from "lucide-vue-next";
+import { Terminal, Trash2, ChevronsDown, Info, CheckCircle2, AlertTriangle, XCircle, Brain, ChevronRight } from "@lucide/vue";
 import { useActivityLog, type LogEntry } from "~/composables/useActivityLog";
 
 const { entries, connected, connect, clear } = useActivityLog();

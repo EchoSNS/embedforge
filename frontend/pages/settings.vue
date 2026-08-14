@@ -304,7 +304,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted } from "vue";
-import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2 } from "lucide-vue-next";
+import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2 } from "@lucide/vue";
 import { useSdkManager } from "~/composables/useSdkManager";
 
 const {

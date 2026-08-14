@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from "vue";
-import { Send, MessageSquare, ChevronUp, Bot, User } from "lucide-vue-next";
+import { Send, MessageSquare, ChevronUp, Bot, User } from "@lucide/vue";
 import { useWebSocket } from "~/composables/useWebSocket";
 
 const props = defineProps<{

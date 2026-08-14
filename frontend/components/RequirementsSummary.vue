@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { FileCheck, ChevronDown } from "lucide-vue-next";
+import { FileCheck, ChevronDown } from "@lucide/vue";
 
 defineProps<{
   requirements: Record<string, any>;

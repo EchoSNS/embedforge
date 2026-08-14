@@ -177,7 +177,7 @@
 
 <script setup lang="ts">
 import { ref, inject, onMounted, type Ref } from "vue";
-import { Sun, Moon, Zap, Cpu, Sparkles, Lightbulb } from "lucide-vue-next";
+import { Sun, Moon, Zap, Cpu, Sparkles, Lightbulb } from "@lucide/vue";
 import { useWorkflow } from "~/composables/useWorkflow";
 
 const isDark = inject<Ref<boolean>>("isDark")!;

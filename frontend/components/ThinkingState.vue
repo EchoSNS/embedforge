@@ -44,7 +44,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { Brain } from "lucide-vue-next";
+import { Brain } from "@lucide/vue";
 
 const props = withDefaults(defineProps<{
   visible: boolean;

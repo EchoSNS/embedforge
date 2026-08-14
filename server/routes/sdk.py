@@ -93,15 +93,9 @@ def _refs_dir_for(profile_name: str) -> Path:
     refs_root = (_ensure_profiles_dir() / "references").resolve()
     refs_root.mkdir(parents=True, exist_ok=True)
 
-    # Resolve via known subdirectories first to avoid relying directly on
-    # request-provided path fragments in path construction.
-    if d is None:
-        # Preserve existing behavior: create a new directory for a valid profile.
-        d = (refs_root / safe_profile_name).resolve()
+    d = (refs_root / safe_profile_name).resolve()
 
     try:
-        d.relative_to(refs_root)
-    except ValueError:
         d.relative_to(refs_root)
     except ValueError:
         raise HTTPException(400, "Invalid profile name")
@@ -201,8 +195,8 @@ async def generate_profile(req: ProfileGenerateRequest):
         log.success(f"Profile generated in {elapsed:.1f}s", f"{periph_count} peripherals detected")
 
         # Auto-save to library
-        vendor_slug = (req.vendor_name or "unknown").lower().replace(" ", "_")
-        sdk_slug = (req.sdk_name or "sdk").lower().replace(" ", "_")
+        vendor_slug = re.sub(r"[^a-z0-9_-]", "_", (req.vendor_name or "unknown").lower())
+        sdk_slug = re.sub(r"[^a-z0-9_-]", "_", (req.sdk_name or "sdk").lower())
         profiles_dir = _ensure_profiles_dir()
         auto_name = f"{vendor_slug}_{sdk_slug}"
         (profiles_dir / f"{auto_name}.yaml").write_text(
@@ -300,8 +294,13 @@ async def save_profile(req: ProfileSaveRequest):
 @router.post("/profiles/activate/{filename}")
 async def activate_profile(filename: str):
     """Copy a library profile to the active plugin's profile.yaml."""
-    profiles_dir = _ensure_profiles_dir()
-    source = profiles_dir / filename
+    safe_filename = _sanitize_filename(filename)
+    profiles_dir = _ensure_profiles_dir().resolve()
+    source = (profiles_dir / safe_filename).resolve()
+    try:
+        source.relative_to(profiles_dir)
+    except ValueError:
+        raise HTTPException(400, "Invalid profile filename")
     if not source.exists():
         raise HTTPException(404, f"Profile not found: {filename}")
 
@@ -460,13 +459,13 @@ async def get_profile_references(profile_name: str):
 async def delete_profile_reference(profile_name: str, filename: str):
     """Remove a reference analysis from a profile."""
     refs_dir = _refs_dir_for(profile_name).resolve()
-    try:
-        filepath.relative_to(refs_dir)
     safe_filename = _sanitize_filename(filename)
     filepath = (refs_dir / safe_filename).resolve()
+    try:
+        filepath.relative_to(refs_dir)
     except ValueError:
-    filepath = (refs_dir / safe_filename).resolve()
-    if refs_dir != filepath.parent and refs_dir not in filepath.parents:
+        raise HTTPException(400, "Invalid reference filename")
+    if not filepath.exists():
         raise HTTPException(404, f"Reference not found: {filename}")
     filepath.unlink()
     log.info(f"Deleted reference {filename} from profile {profile_name}")

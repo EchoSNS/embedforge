@@ -100,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck } from "lucide-vue-next";
+import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck } from "@lucide/vue";
 
 const props = defineProps<{
   state: any;

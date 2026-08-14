@@ -81,7 +81,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { Plus, ChevronRight, ChevronDown, CircuitBoard, Cpu, Settings } from "lucide-vue-next";
+import { Plus, ChevronRight, ChevronDown, CircuitBoard, Cpu, Settings } from "@lucide/vue";
 
 defineProps<{
   boards: string[];

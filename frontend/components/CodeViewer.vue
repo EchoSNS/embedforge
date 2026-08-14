@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { FileCode, Download, ClipboardCopy, Check as CheckIcon } from "lucide-vue-next";
+import { FileCode, Download, ClipboardCopy, Check as CheckIcon } from "@lucide/vue";
 import { useRuntimeConfig } from "#app";
 
 const props = defineProps<{
