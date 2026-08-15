@@ -27,14 +27,18 @@ class ProfileGenerator:
         sdk_name: str = "",
     ) -> Dict[str, Any]:
         """Scan SDK and produce a profile dict (YAML-serializable)."""
+        logger.info("Generating capability profile from SDK: %s", sdk_path)
         analyzer = SDKAnalyzer(include_paths=[sdk_path])
         scan = analyzer.analyze()
+        logger.info("SDK scan complete: %d functions, %d types", len(scan.functions), len(scan.types))
 
         # Attempt LLM-assisted generation, fall back to heuristic
         try:
-            return await self._llm_generate(scan, vendor_name, sdk_name)
+            profile = await self._llm_generate(scan, vendor_name, sdk_name)
+            logger.info("Profile generated via LLM")
+            return profile
         except Exception as e:
-            logger.warning(f"LLM profile generation failed, using heuristics: {e}")
+            logger.warning("LLM profile generation failed, using heuristics: %s", e)
             return self._heuristic_generate(scan, vendor_name, sdk_name)
 
     async def _llm_generate(

@@ -7,9 +7,21 @@ Thank you for contributing! This document explains how to get involved.
 ```bash
 git clone https://github.com/EchoSNS/embedforge.git
 cd embedforge
-python -m venv .venv
-source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync
+uv pip install -e ".[dev]"
+```
+
+### External Tools (optional but recommended)
+
+```bash
+# Static analysis
+winget install Cppcheck.Cppcheck
+
+# ARM cross-compiler (for STM32 builds)
+winget install Arm.GnuArmEmbeddedToolchain
+
+# Firmware flashing
+uv pip install -e ".[flash]"
 ```
 
 ## Code Style

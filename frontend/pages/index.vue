@@ -134,6 +134,10 @@
                 :loading="stageLoading"
                 @approve="approveStage"
                 @edit="editStage"
+                @validate="runValidate"
+                @analyze="runAnalyze"
+                @build="runBuild"
+                @retry="retryStage"
               />
             </div>
           </Transition>
@@ -192,7 +196,7 @@ const stageLoading = ref(false);
 const thinkingStage = ref(0);
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
-const { currentSession, startSession, approve, edit, fetchBoards } = useWorkflow();
+const { currentSession, startSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards } = useWorkflow();
 
 const examples = [
   "LED blink on PA5 at 1Hz using TIM2",
@@ -256,5 +260,47 @@ async function approveStage(stage: string) {
 
 async function editStage(stage: string, data: any) {
   await edit(stage, data);
+}
+
+async function retryStage(stage: string) {
+  await approveStage(stage);
+}
+
+async function runValidate() {
+  stageLoading.value = true;
+  try {
+    const result = await validate();
+    if (currentSession.value) {
+      currentSession.value.build_result = { ...currentSession.value.build_result, validation: result };
+    }
+  } finally {
+    stageLoading.value = false;
+  }
+}
+
+async function runAnalyze() {
+  stageLoading.value = true;
+  try {
+    const result = await analyze();
+    if (currentSession.value) {
+      currentSession.value.build_result = { ...currentSession.value.build_result, analysis: result };
+    }
+  } finally {
+    stageLoading.value = false;
+  }
+}
+
+async function runBuild() {
+  stageLoading.value = true;
+  startThinkingAnimation();
+  try {
+    const result = await build();
+    if (currentSession.value) {
+      currentSession.value.build_result = { ...currentSession.value.build_result, ...result };
+    }
+  } finally {
+    stageLoading.value = false;
+    stopThinkingAnimation();
+  }
 }
 </script>

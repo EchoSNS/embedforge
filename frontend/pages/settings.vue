@@ -183,6 +183,14 @@
               </div>
               <div class="flex items-center gap-2">
                 <button
+                  v-if="isProfileActive(p)"
+                  class="rounded-lg bg-green-500/10 text-green-600 border border-green-500/20 px-3 py-1.5 text-xs font-medium cursor-default"
+                  disabled
+                >
+                  ✓ Active
+                </button>
+                <button
+                  v-else
                   class="rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 transition-all"
                   @click="doActivateProfile(p.filename)"
                 >
@@ -383,11 +391,17 @@ async function saveToLibrary() {
 async function doActivateProfile(filename: string) {
   await activateProfile(filename);
   await loadProfile();
+  await refreshProfiles();
 }
 
 async function doDeleteProfile(filename: string) {
   await deleteProfile(filename);
   await refreshProfiles();
+}
+
+function isProfileActive(p: any): boolean {
+  if (!profile.value) return false;
+  return profile.value.vendor === p.vendor && profile.value.sdk === p.sdk && profile.value.sdk_version === p.sdk_version;
 }
 
 async function runRefAnalysis() {

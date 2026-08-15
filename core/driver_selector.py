@@ -55,7 +55,7 @@ class DriverSelector:
         candidates = catalog.list_drivers(criteria.peripheral)
 
         if not candidates:
-            logger.warning(f"No drivers found for peripheral '{criteria.peripheral}'")
+            logger.warning("No drivers found for peripheral '%s'", criteria.peripheral)
             return None
 
         scored = [(d, self._score(d, criteria)) for d in candidates]
@@ -65,6 +65,11 @@ class DriverSelector:
         alternatives = [d for d, _ in scored[1:3]]
 
         rationale = self._build_rationale(best, criteria)
+        logger.info(
+            "Driver selected: %s (score=%.2f) for %s, alternatives=%s",
+            best.name, best_score, criteria.peripheral,
+            [d.name for d in alternatives],
+        )
 
         return SelectionResult(
             driver=best,

@@ -79,6 +79,7 @@ class AIReviewer:
             rules_pack = self._registry.get_architecture_rules()
             architecture_rules = rules_pack.get_rules_text()
 
+        logger.info("Starting AI review of %d file(s)", len(files))
         file_block = "\n".join(
             f"--- {name} ---\n{content}" for name, content in files.items()
         )
@@ -97,7 +98,9 @@ class AIReviewer:
                 SystemMessage(content=REVIEW_SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),
             ])
-            return self._parse_review(response.content)
+            result = self._parse_review(response.content)
+            logger.info("AI review complete: verdict=%s, score=%d, issues=%d", result.verdict, result.score, len(result.issues))
+            return result
         except Exception as e:
             logger.error(f"AI review failed: {e}")
             return ReviewResult(verdict="error", score=0, summary=f"Review failed: {e}")

@@ -19,6 +19,8 @@ EmbedForge uses a multi-stage LLM pipeline with human-in-the-loop approval gates
 - **Plugin architecture** — swap vendor SDKs without changing core logic
 - **Compiler fix loop** — LLM-driven iterative error repair from build failures
 - **AI code review** — automated review against SDK architecture rules
+- **Static analysis** — cppcheck integration catches bugs the LLM misses
+- **Firmware flashing** — pyOCD-based flash service with probe discovery
 - **Pin validation** — catches invalid pin references before compilation
 - **Multi-LLM support** — OpenAI, Azure OpenAI, Anthropic (Claude)
 - **SDK Scanner** — point to any vendor SDK, auto-extract API metadata
@@ -42,7 +44,10 @@ graph TD
     I -->|Yes| J[TDD Code Generation]
     J --> K[AI Review]
     K --> L{Pass?}
-    L -->|Yes| M[Build & Validate]
+    L -->|Yes| M[Static Analysis]
+    M --> N[Build & Validate]
+    N --> O{Flash?}
+    O -->|Yes| P2[Flash to Target]
     L -->|No| J
 
     P[Plugin: SDK Catalog] -.-> D
@@ -131,9 +136,10 @@ embedforge/
 │   ├── main.py             # App factory, CORS, plugin loading
 │   ├── ws.py               # WebSocket (LLM-powered chat + progress)
 │   └── routes/
-│       ├── workflow.py     # Pipeline start/approve/edit/build/validate
+│       ├── workflow.py     # Pipeline start/approve/edit/build/validate/analyze
 │       ├── plugins.py      # Board/driver discovery
-│       └── sdk.py          # SDK scan, profile generate/edit, reference upload
+│       ├── sdk.py          # SDK scan, profile generate/edit, reference upload
+│       └── flash.py        # Probe discovery, firmware flashing, target reset
 ├── frontend/               # Nuxt 3 dashboard (Tailwind + Lucide)
 │   ├── pages/
 │   │   ├── index.vue       # Main workspace (prompt → pipeline → code)
@@ -147,7 +153,8 @@ embedforge/
 │   ├── reference_analyzer.py # Reference project pattern extraction
 │   ├── tdd_generator.py    # TDD code generation pipeline
 │   ├── compiler_fix_loop.py # LLM-driven compilation error repair
-│   ├── code_validator.py   # Pre-compilation validation
+│   ├── code_validator.py   # Pre-compilation validation (+ cppcheck)
+│   ├── static_analyzer.py  # cppcheck static analysis integration
 │   ├── pin_validator.py    # Pin symbol validation
 │   ├── ai_reviewer.py      # AI code review
 │   └── dynamic_prompts.py  # Runtime prompt builder
@@ -158,7 +165,7 @@ embedforge/
 │       └── reference_snippets/ # Golden code examples
 ├── prompts/                # Stage system prompts (source of truth)
 ├── config/                 # LLM & app configuration
-├── services/               # Build service abstraction
+├── services/               # Build & flash service abstractions
 ├── rag/                    # Optional RAG module (ChromaDB)
 ├── unity/                  # Unity C test framework
 ├── docs/                   # Documentation

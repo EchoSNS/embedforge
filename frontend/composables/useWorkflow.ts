@@ -16,6 +16,7 @@ export interface WorkflowState {
   software_detailed: Record<string, any>;
   generated_code: Record<string, string>;
   review_result: Record<string, any>;
+  build_result: Record<string, any>;
   errors: string[];
   history: any[];
 }
@@ -66,5 +67,31 @@ export function useWorkflow() {
     currentSession.value = await stateRes.json();
   }
 
-  return { currentSession, startSession, approve, edit, fetchBoards };
+  async function validate() {
+    if (!currentSession.value) return null;
+    const sid = currentSession.value.session_id;
+    const res = await fetch(`${apiBase}/api/workflow/${sid}/validate`, { method: "POST" });
+    return res.json();
+  }
+
+  async function analyze() {
+    if (!currentSession.value) return null;
+    const sid = currentSession.value.session_id;
+    const res = await fetch(`${apiBase}/api/workflow/${sid}/analyze`, { method: "POST" });
+    return res.json();
+  }
+
+  async function build() {
+    if (!currentSession.value) return null;
+    const sid = currentSession.value.session_id;
+    const res = await fetch(`${apiBase}/api/workflow/${sid}/build`, { method: "POST" });
+    return res.json();
+  }
+
+  function getDownloadUrl() {
+    if (!currentSession.value) return "";
+    return `${apiBase}/api/workflow/${currentSession.value.session_id}/download`;
+  }
+
+  return { currentSession, startSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards };
 }

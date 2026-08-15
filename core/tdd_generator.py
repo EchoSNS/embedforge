@@ -43,6 +43,7 @@ class TDDResult:
     production_files: Dict[str, str] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
+    error_detail: str = ""
 
 
 class TDDGenerator:
@@ -75,105 +76,54 @@ class TDDGenerator:
             reference_context: optional reference project patterns
         """
         # Phase 1: Mock generation
-        mock_result = self._generate_mocks(
-            requirements, driver_context, architecture_rules
+        logger.info("TDD Phase 1: Generating mocks")
+        mock_result, mock_err = self._invoke_and_parse(
+            self._build_mock_prompt(architecture_rules),
+            (
+                f"Generate mock/stub files for the following SDK drivers.\n\n"
+                f"REQUIREMENTS:\n{_format_requirements(requirements)}\n\n"
+                f"SDK DRIVER API:\n{driver_context}\n\n"
+                f"Generate mock headers and source files that stub all SDK functions "
+                f"with spy counters for unit testing."
+            ),
         )
         if not mock_result:
+            logger.error("TDD Phase 1 failed: %s", mock_err)
             return TDDResult(
-                success=False, phase=TDDPhase.MOCK_GENERATION, errors=["Mock generation failed"]
+                success=False,
+                phase=TDDPhase.MOCK_GENERATION,
+                errors=[f"Mock generation failed: {mock_err}"],
+                error_detail=mock_err,
             )
 
         # Phase 2: Test generation
-        test_result = self._generate_tests(
-            requirements, mock_result, driver_context, architecture_rules
+        logger.info("TDD Phase 2: Generating tests (mocks: %d files)", len(mock_result))
+        mock_summary = "\n".join(f"// {name}" for name in mock_result.keys())
+        test_result, test_err = self._invoke_and_parse(
+            self._build_test_prompt(architecture_rules),
+            (
+                f"Generate Unity test files for the following requirements.\n\n"
+                f"REQUIREMENTS:\n{_format_requirements(requirements)}\n\n"
+                f"AVAILABLE MOCKS:\n{mock_summary}\n\n"
+                f"SDK API:\n{driver_context}\n\n"
+                f"Write test cases that verify the production code behavior. "
+                f"Tests should fail initially (Red phase)."
+            ),
         )
         if not test_result:
+            logger.error("TDD Phase 2 failed: %s", test_err)
             return TDDResult(
                 success=False,
                 phase=TDDPhase.TEST_GENERATION,
                 mock_files=mock_result,
-                errors=["Test generation failed"],
+                errors=[f"Test generation failed: {test_err}"],
+                error_detail=test_err,
             )
 
         # Phase 3: Production code
-        prod_result = self._generate_production(
-            requirements,
-            mock_result,
-            test_result,
-            driver_context,
-            pin_context,
-            architecture_rules,
-            reference_context,
-        )
-        if not prod_result:
-            return TDDResult(
-                success=False,
-                phase=TDDPhase.PRODUCTION_CODE,
-                mock_files=mock_result,
-                test_files=test_result,
-                errors=["Production code generation failed"],
-            )
-
-        return TDDResult(
-            success=True,
-            phase=TDDPhase.VALIDATION,
-            mock_files=mock_result,
-            test_files=test_result,
-            production_files=prod_result,
-        )
-
-    def _generate_mocks(
-        self,
-        requirements: Dict[str, Any],
-        driver_context: str,
-        architecture_rules: str,
-    ) -> Optional[Dict[str, str]]:
-        system_prompt = self._build_mock_prompt(architecture_rules)
-        user_prompt = (
-            f"Generate mock/stub files for the following SDK drivers.\n\n"
-            f"REQUIREMENTS:\n{_format_requirements(requirements)}\n\n"
-            f"SDK DRIVER API:\n{driver_context}\n\n"
-            f"Generate mock headers and source files that stub all SDK functions "
-            f"with spy counters for unit testing."
-        )
-        return self._invoke_and_parse(system_prompt, user_prompt)
-
-    def _generate_tests(
-        self,
-        requirements: Dict[str, Any],
-        mock_files: Dict[str, str],
-        driver_context: str,
-        architecture_rules: str,
-    ) -> Optional[Dict[str, str]]:
-        mock_summary = "\n".join(
-            f"// {name}" for name in mock_files.keys()
-        )
-        system_prompt = self._build_test_prompt(architecture_rules)
-        user_prompt = (
-            f"Generate Unity test files for the following requirements.\n\n"
-            f"REQUIREMENTS:\n{_format_requirements(requirements)}\n\n"
-            f"AVAILABLE MOCKS:\n{mock_summary}\n\n"
-            f"SDK API:\n{driver_context}\n\n"
-            f"Write test cases that verify the production code behavior. "
-            f"Tests should fail initially (Red phase)."
-        )
-        return self._invoke_and_parse(system_prompt, user_prompt)
-
-    def _generate_production(
-        self,
-        requirements: Dict[str, Any],
-        mock_files: Dict[str, str],
-        test_files: Dict[str, str],
-        driver_context: str,
-        pin_context: str,
-        architecture_rules: str,
-        reference_context: str,
-    ) -> Optional[Dict[str, str]]:
-        test_content = "\n\n".join(
-            f"// {name}\n{content}" for name, content in test_files.items()
-        )
-        system_prompt = self._build_production_prompt(architecture_rules)
-        user_prompt = (
+        logger.info("TDD Phase 3: Generating production code (tests: %d files)", len(test_result))
+        test_content = "\n\n".join(f"// {name}\n{content}" for name, content in test_result.items())
+        prod_user_prompt = (
             f"Generate production code that passes these tests.\n\n"
             f"REQUIREMENTS:\n{_format_requirements(requirements)}\n\n"
             f"TESTS TO PASS:\n{test_content}\n\n"
@@ -182,22 +132,57 @@ class TDDGenerator:
             f"ARCHITECTURE RULES:\n{architecture_rules}\n\n"
         )
         if reference_context:
-            user_prompt += f"REFERENCE PATTERNS:\n{reference_context}\n\n"
+            prod_user_prompt += f"REFERENCE PATTERNS:\n{reference_context}\n\n"
+        prod_user_prompt += "Generate the production .c and .h files."
 
-        user_prompt += "Generate the production .c and .h files."
-        return self._invoke_and_parse(system_prompt, user_prompt)
+        prod_result, prod_err = self._invoke_and_parse(
+            self._build_production_prompt(architecture_rules), prod_user_prompt
+        )
+        if not prod_result:
+            logger.error("TDD Phase 3 failed: %s", prod_err)
+            return TDDResult(
+                success=False,
+                phase=TDDPhase.PRODUCTION_CODE,
+                mock_files=mock_result,
+                test_files=test_result,
+                errors=[f"Production code generation failed: {prod_err}"],
+                error_detail=prod_err,
+            )
 
-    def _invoke_and_parse(self, system_prompt: str, user_prompt: str) -> Optional[Dict[str, str]]:
+        logger.info(
+            "TDD pipeline complete: mocks=%d, tests=%d, production=%d files",
+            len(mock_result), len(test_result), len(prod_result),
+        )
+        return TDDResult(
+            success=True,
+            phase=TDDPhase.VALIDATION,
+            mock_files=mock_result,
+            test_files=test_result,
+            production_files=prod_result,
+        )
+
+    def _invoke_and_parse(self, system_prompt: str, user_prompt: str) -> tuple[Optional[Dict[str, str]], str]:
+        """Invoke LLM and parse code blocks. Returns (files, error_detail)."""
         llm = get_llm()
         try:
             response = llm.invoke([
                 SystemMessage(content=system_prompt),
                 HumanMessage(content=user_prompt),
             ])
-            return _parse_code_blocks(response.content)
+            parsed = _parse_code_blocks(response.content)
+            if parsed is None:
+                preview = response.content[:300].replace("\n", " ")
+                detail = (
+                    f"LLM responded but no code blocks (```filename.c ... ```) were found in output. "
+                    f"Response preview: {preview}"
+                )
+                logger.warning("Code block parse failed: %s", detail)
+                return None, detail
+            return parsed, ""
         except Exception as e:
-            logger.error(f"TDD generation failed: {e}")
-            return None
+            detail = f"{type(e).__name__}: {e}"
+            logger.error("LLM invocation failed: %s", detail)
+            return None, detail
 
     def _build_mock_prompt(self, rules: str) -> str:
         return (

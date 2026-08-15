@@ -86,6 +86,7 @@ class WorkflowEngine:
 
     def initialize_state(self, user_input: str, board_name: str) -> WorkflowState:
         """Create initial workflow state from user input and board selection."""
+        logger.info("Initializing workflow state: board=%s, input=%s", board_name, user_input[:80])
         state = WorkflowState(
             user_input=user_input,
             board_name=board_name,
@@ -102,13 +103,15 @@ class WorkflowEngine:
                 "clock_hz": config.clock_hz,
                 "peripherals": config.peripherals,
             }
+            logger.info("Loaded board capabilities: MCU=%s, family=%s", config.mcu, config.mcu_family)
         except Exception as e:
-            logger.warning(f"Could not load board capabilities: {e}")
+            logger.warning("Could not load board capabilities: %s", e)
 
         return state
 
     def run_refiner(self, state: WorkflowState) -> WorkflowState:
         """Refine user requirements into structured JSON spec."""
+        logger.info("Running refiner stage for session %s", state.session_id)
         from prompts.stages import REFINER_SYSTEM_PROMPT
 
         profile = self._registry.get_capability_profile()
@@ -137,6 +140,7 @@ class WorkflowEngine:
 
     def run_hardware(self, state: WorkflowState) -> WorkflowState:
         """Assign peripherals and pins based on requirements."""
+        logger.info("Running hardware stage for session %s", state.session_id)
         from core.mcu_capabilities import MCUCapabilityService
         from prompts.stages import HARDWARE_SYSTEM_PROMPT
 
@@ -168,6 +172,7 @@ class WorkflowEngine:
 
     def run_software_arch(self, state: WorkflowState) -> WorkflowState:
         """Select SDK drivers and define architecture."""
+        logger.info("Running software architecture stage for session %s", state.session_id)
         from core.driver_catalog import DriverCatalogService
         from prompts.stages import SOFTWARE_ARCH_SYSTEM_PROMPT
 
@@ -191,6 +196,7 @@ class WorkflowEngine:
 
     def run_software_detailed(self, state: WorkflowState) -> WorkflowState:
         """Generate detailed function-level design."""
+        logger.info("Running detailed design stage for session %s", state.session_id)
         from prompts.stages import SOFTWARE_DETAILED_SYSTEM_PROMPT
 
         rules = self._registry.get_architecture_rules()
@@ -220,6 +226,7 @@ class WorkflowEngine:
 
     def run_codegen(self, state: WorkflowState) -> WorkflowState:
         """Generate production code using TDD pipeline."""
+        logger.info("Running code generation stage for session %s", state.session_id)
         from core.tdd_generator import TDDGenerator
 
         rules = self._registry.get_architecture_rules()
@@ -251,15 +258,18 @@ class WorkflowEngine:
                 **result.test_files,
                 **result.production_files,
             }
+            state.stage = WorkflowStage.REVIEW
         else:
             state.errors.extend(result.errors)
+            if result.error_detail:
+                logger.error("Codegen failed at phase %s: %s", result.phase.value, result.error_detail)
 
-        state.stage = WorkflowStage.REVIEW
         state.history.append({"stage": "codegen", "timestamp": datetime.utcnow().isoformat()})
         return state
 
     def run_review(self, state: WorkflowState) -> WorkflowState:
         """AI-review the generated code."""
+        logger.info("Running AI review stage for session %s", state.session_id)
         from core.ai_reviewer import AIReviewer
 
         reviewer = AIReviewer(self._registry)
@@ -322,7 +332,7 @@ class WorkflowEngine:
                 except json.JSONDecodeError:
                     pass
 
-            logger.warning("Failed to parse JSON from LLM response")
+            logger.warning("Failed to parse JSON from LLM response (len=%d)", len(response))
             return {"raw_response": response[:2000]}
 
     @staticmethod

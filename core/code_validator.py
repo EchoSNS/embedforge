@@ -30,6 +30,7 @@ class ValidationReport:
     pin_issues: List[str] = field(default_factory=list)
     missing_headers: List[str] = field(default_factory=list)
     rule_violations: List[str] = field(default_factory=list)
+    static_analysis_issues: List[str] = field(default_factory=list)
 
 
 class CodeValidator:
@@ -42,22 +43,32 @@ class CodeValidator:
     def __init__(self, registry: PluginRegistry) -> None:
         self._registry = registry
 
-    def validate(self, files: Dict[str, str]) -> ValidationReport:
+    def validate(self, files: Dict[str, str], run_static_analysis: bool = True) -> ValidationReport:
         """
         Validate all generated files.
 
         Args:
             files: mapping of filename → source code content
+            run_static_analysis: whether to run cppcheck (if available)
         """
         report = ValidationReport()
+        logger.info("Starting validation of %d file(s)", len(files))
 
         for filename, content in files.items():
+            logger.debug("Validating file: %s (%d bytes)", filename, len(content))
             self._check_includes(filename, content, report)
             self._check_pins(content, report)
             self._check_rules(content, report)
             self._check_syntax(filename, content, report)
 
+        if run_static_analysis:
+            self._run_static_analysis(files, report)
+
         report.passed = not report.errors and not report.pin_issues
+        logger.info(
+            "Validation complete: passed=%s, errors=%d, pin_issues=%d, static_issues=%d",
+            report.passed, len(report.errors), len(report.pin_issues), len(report.static_analysis_issues),
+        )
         return report
 
     def _check_includes(self, filename: str, code: str, report: ValidationReport) -> None:
@@ -73,6 +84,7 @@ class CodeValidator:
         includes = analyzer.get_includes_from_code(code)
         for inc in includes:
             if not self._is_standard_header(inc) and not analyzer.resolve_header(inc):
+                logger.debug("Unresolved include in %s: %s", filename, inc)
                 report.missing_headers.append(f"{filename}: cannot resolve '{inc}'")
 
     def _check_pins(self, code: str, report: ValidationReport) -> None:
@@ -97,6 +109,24 @@ class CodeValidator:
             report.errors.append(
                 f"{filename}: unbalanced braces ({{ = {open_braces}, }} = {close_braces})"
             )
+
+    def _run_static_analysis(self, files: Dict[str, str], report: ValidationReport) -> None:
+        """Run cppcheck if available."""
+        from core.static_analyzer import StaticAnalyzer
+
+        analyzer = StaticAnalyzer()
+        if not analyzer.is_available():
+            logger.debug("cppcheck not available — skipping static analysis")
+            return
+
+        logger.info("Running cppcheck static analysis…")
+        result = analyzer.analyze(files)
+        for issue in result.issues:
+            report.static_analysis_issues.append(
+                f"{issue.file}:{issue.line} [{issue.severity}] {issue.message} ({issue.issue_id})"
+            )
+            if issue.severity == "error":
+                report.errors.append(f"static-analysis: {issue.file}:{issue.line} {issue.message}")
 
     @staticmethod
     def _is_standard_header(name: str) -> bool:

@@ -6,6 +6,8 @@
 - **LLM API key** — one of: OpenAI, Azure OpenAI, or Anthropic
 - **Git**
 - **Optional**: `arm-none-eabi-gcc` for compilation validation (STM32 plugin)
+- **Optional**: `cppcheck` for static analysis (`winget install Cppcheck.Cppcheck`)
+- **Optional**: `pyocd` for firmware flashing (`uv pip install pyocd`)
 - **Optional**: Docker for containerized deployment
 
 ## Installation
@@ -28,6 +30,9 @@ pip install -e .
 
 # Optional: RAG support
 uv pip install -e ".[rag]"
+
+# Optional: Firmware flashing
+uv pip install -e ".[flash]"
 
 # Optional: Development tools
 uv pip install -e ".[dev]"
@@ -62,11 +67,20 @@ OPENAI_MODEL=gpt-4
 STM32CUBE_F4_PATH=C:/STM32CubeF4
 ```
 
+> **Note:** `STM32CUBE_F4_PATH` should point to the **root** of the cloned STM32CubeF4 repo, not a subdirectory. The system automatically appends the correct HAL and CMSIS include paths.
+
+4. (Optional) Set log level for debugging:
+
+```env
+LOG_LEVEL=DEBUG
+```
+
 ## Running
 
 ```bash
 # Backend
-uvicorn server.main:app --reload
+uv run uvicorn server.main:app --reload
+# Or: python app.py
 
 # Frontend (separate terminal)
 cd frontend
@@ -126,6 +140,8 @@ You can also upload reference `.c/.h` projects in the Reference Analyzer tab to 
 | "No active plugin" | Set `EMBEDFORGE_PLUGIN=stm32_hal` in `.env` |
 | "No module named dotenv" | Run `uv pip install python-dotenv` or `uv sync` |
 | Compilation fails | Install `arm-none-eabi-gcc` and set `STM32CUBE_F4_PATH` |
+| cppcheck not detected | Install cppcheck and add to PATH |
+| pyOCD not detected | Run `uv pip install pyocd` or `uv pip install -e ".[flash]"` |
 | Import errors | Run `uv sync` from project root |
 | Slow generation | Use `gpt-4o` instead of `gpt-4` for faster (cheaper) results |
 | `uv add` fails | Ensure `[tool.hatch.build.targets.wheel]` exists in pyproject.toml |

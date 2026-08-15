@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import io
 import json
+import logging
 import zipfile
 from typing import Any, Dict, Optional
 
@@ -16,6 +17,7 @@ from core.workflow import WorkflowEngine, WorkflowStage, WorkflowState
 from server.main import get_registry
 from server.ws import broadcast
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # In-memory session store (swap for Redis/DB in production)
@@ -39,6 +41,7 @@ class ChatMessage(BaseModel):
 async def start_workflow(req: StartRequest):
     from server.activity_log import activity_log
 
+    logger.info("Starting workflow: board=%s, input=%s", req.board_name, req.user_input[:80])
     registry = get_registry()
     engine = WorkflowEngine(registry)
 
@@ -69,6 +72,7 @@ async def get_state(session_id: str):
 async def approve_stage(session_id: str, stage: str):
     from server.activity_log import activity_log
 
+    logger.info("Stage approval: session=%s, stage=%s", session_id, stage)
     state = _get_session(session_id)
     registry = get_registry()
     engine = WorkflowEngine(registry)
@@ -83,6 +87,11 @@ async def approve_stage(session_id: str, stage: str):
     }
     activity_log.step(f"Stage approved: {stage_labels.get(stage, stage)}", f"Session: {session_id[:8]}")
     await broadcast(session_id, {"type": "stage_start", "stage": stage})
+
+    # Clear previous errors on retry
+    if state.errors:
+        logger.info("Clearing %d previous error(s) for retry", len(state.errors))
+        state.errors = []
 
     try:
         if stage == "refiner" or state.stage == WorkflowStage.CLARIFIER:
@@ -114,7 +123,16 @@ async def approve_stage(session_id: str, stage: str):
 
     _sessions[session_id] = state
     payload = _serialize_state(state)
-    await broadcast(session_id, {"type": "stage_complete", **payload})
+
+    if state.errors:
+        activity_log.error(
+            f"Stage completed with errors: {stage_labels.get(stage, stage)}",
+            "; ".join(state.errors[:3]),
+        )
+        await broadcast(session_id, {"type": "stage_error", **payload})
+    else:
+        await broadcast(session_id, {"type": "stage_complete", **payload})
+
     return payload
 
 
@@ -167,6 +185,7 @@ async def validate_code(session_id: str):
     """Run code validation (pins, includes, rules) without compilation."""
     from core.code_validator import CodeValidator
 
+    logger.info("Validation requested for session %s", session_id)
     state = _get_session(session_id)
     if not state.generated_code:
         raise HTTPException(400, "No generated code to validate")
@@ -182,6 +201,56 @@ async def validate_code(session_id: str):
         "pin_issues": report.pin_issues,
         "missing_headers": report.missing_headers,
         "rule_violations": report.rule_violations,
+        "static_analysis_issues": report.static_analysis_issues,
+    }
+
+
+@router.post("/{session_id}/analyze")
+async def analyze_code(session_id: str):
+    """Run cppcheck static analysis on generated code."""
+    from core.static_analyzer import StaticAnalyzer
+    from server.activity_log import activity_log
+
+    state = _get_session(session_id)
+    if not state.generated_code:
+        raise HTTPException(400, "No generated code to analyze")
+
+    analyzer = StaticAnalyzer()
+    if not analyzer.is_available():
+        logger.warning("Static analysis requested but cppcheck not installed")
+        return {"available": False, "message": "cppcheck not installed"}
+
+    activity_log.step("Running static analysis…", f"Session: {session_id[:8]}")
+    logger.info("Static analysis requested for session %s", session_id)
+    result = analyzer.analyze(state.generated_code)
+
+    if result.has_critical:
+        activity_log.error("Static analysis found critical issues", f"{result.errors} error(s)")
+    elif result.total_issues > 0:
+        activity_log.warn("Static analysis found issues", f"{result.total_issues} issue(s)")
+    else:
+        activity_log.success("Static analysis passed — no issues found")
+
+    await broadcast(session_id, {"type": "analysis_complete", "issues": result.total_issues})
+
+    return {
+        "success": result.success,
+        "total_issues": result.total_issues,
+        "errors": result.errors,
+        "warnings": result.warnings,
+        "style": result.style,
+        "performance": result.performance,
+        "portability": result.portability,
+        "issues": [
+            {
+                "file": i.file,
+                "line": i.line,
+                "severity": i.severity,
+                "message": i.message,
+                "id": i.issue_id,
+            }
+            for i in result.issues
+        ],
     }
 
 
@@ -190,6 +259,7 @@ async def build_code(session_id: str):
     """Attempt to compile generated code using the plugin's compiler backend."""
     from services.build_service import BuildRequest, LocalBuildService
 
+    logger.info("Build requested for session %s", session_id)
     state = _get_session(session_id)
     if not state.generated_code:
         raise HTTPException(400, "No generated code to build")

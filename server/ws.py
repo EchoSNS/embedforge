@@ -34,6 +34,7 @@ async def broadcast(session_id: str, message: Dict[str, Any]) -> None:
 
 async def _handle_chat(session_id: str, message: str, websocket: WebSocket) -> None:
     """Process a user chat message with LLM context from the active session."""
+    logger.info("Chat message received: session=%s, len=%d", session_id, len(message))
     try:
         from config.llm_config import get_llm
         from langchain_core.messages import HumanMessage, SystemMessage
@@ -64,6 +65,7 @@ async def _handle_chat(session_id: str, message: str, websocket: WebSocket) -> N
             SystemMessage(content=system),
             HumanMessage(content=message),
         ])
+        logger.debug("Chat response generated: %d chars", len(response.content))
 
         await websocket.send_text(json.dumps({
             "type": "chat_response",

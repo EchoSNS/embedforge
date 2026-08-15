@@ -69,12 +69,17 @@ class LocalBuildService(BuildService):
 
         compiler = self._registry.get_compiler()
         if not compiler.is_available():
+            logger.error("Build requested but compiler is not available")
             return BuildResponse(
                 success=False, log="Compiler not available. Install the toolchain."
             )
 
         board = self._registry.get_board_template(request.board_name)
         include_paths = board.get_sdk_include_paths()
+        logger.info(
+            "Starting build: board=%s, mcu=%s, files=%d, includes=%d",
+            request.board_name, request.target_mcu, len(request.source_files), len(include_paths),
+        )
 
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -97,6 +102,11 @@ class LocalBuildService(BuildService):
                 target_mcu=request.target_mcu,
                 extra_flags=request.extra_flags,
             )
+
+            if result.success:
+                logger.info("Build succeeded: %s", output_path)
+            else:
+                logger.warning("Build failed: %d error(s)", len(result.errors))
 
             return BuildResponse(
                 success=result.success,

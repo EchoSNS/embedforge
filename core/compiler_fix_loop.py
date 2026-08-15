@@ -104,6 +104,7 @@ class CompilerFixLoop:
             else:
                 logger.warning(f"LLM fix returned no changes on iteration {iteration}")
 
+        logger.info("Fix loop exhausted after %d iterations — compilation still failing", self._max_iterations)
         return {
             "success": False,
             "files": current_files,
@@ -151,6 +152,7 @@ class CompilerFixLoop:
         iteration: int,
     ) -> Optional[Dict[str, str]]:
         """Use LLM to fix compilation errors."""
+        logger.info("LLM fix attempt %d: %d error(s) to resolve", iteration, len(result.errors))
         error_text = self._compiler.format_errors_for_llm(result)
         sdk_context = self._gather_sdk_context(files, include_paths)
 
@@ -175,9 +177,11 @@ class CompilerFixLoop:
                 SystemMessage(content=FIX_SYSTEM_PROMPT),
                 HumanMessage(content=user_prompt),
             ])
-            return self._parse_fix_response(response.content)
+            fixed = self._parse_fix_response(response.content)
+            logger.info("LLM fix returned %d corrected file(s)", len(fixed))
+            return fixed
         except Exception as e:
-            logger.error(f"LLM fix failed: {e}")
+            logger.error("LLM fix failed on iteration %d: %s", iteration, e)
             return None
 
     def _gather_sdk_context(self, files: Dict[str, str], include_paths: List[str]) -> str:

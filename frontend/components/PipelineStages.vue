@@ -66,6 +66,7 @@
                 />
                 <div class="flex gap-2">
                   <button
+                    v-if="stage.key !== 'build'"
                     class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
                     :disabled="loading"
                     @click="$emit('approve', nextStageKey)"
@@ -74,12 +75,41 @@
                     Approve & Continue
                   </button>
                   <button
+                    v-if="stage.key !== 'build'"
                     class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
                     :disabled="loading"
                     @click="saveEdit"
                   >
                     <Save class="h-3.5 w-3.5" />
                     Save Edit
+                  </button>
+                </div>
+
+                <!-- Build stage actions -->
+                <div v-if="stage.key === 'build'" class="flex flex-wrap gap-2">
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                    :disabled="loading"
+                    @click="$emit('validate')"
+                  >
+                    <ShieldCheck class="h-3.5 w-3.5" />
+                    Validate
+                  </button>
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                    :disabled="loading"
+                    @click="$emit('analyze')"
+                  >
+                    <FlaskConical class="h-3.5 w-3.5" />
+                    Static Analysis
+                  </button>
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                    :disabled="loading"
+                    @click="$emit('build')"
+                  >
+                    <Hammer class="h-3.5 w-3.5" />
+                    Compile
                   </button>
                 </div>
               </div>
@@ -91,6 +121,27 @@
                 <pre class="max-h-20 overflow-hidden rounded-lg bg-secondary/50 p-2.5 text-xs text-muted-foreground font-mono">{{ JSON.stringify(state[stage.dataKey], null, 2)?.slice(0, 200) }}...</pre>
               </div>
             </Transition>
+
+            <!-- Inline error display with retry -->
+            <Transition name="fade-slide">
+              <div v-if="idx === activeIndex && hasErrors" class="mt-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-2">
+                <p class="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                  <AlertCircle class="h-3.5 w-3.5" />
+                  Stage failed
+                </p>
+                <ul class="space-y-1">
+                  <li v-for="(err, i) in state.errors" :key="i" class="text-xs text-muted-foreground leading-relaxed">• {{ err }}</li>
+                </ul>
+                <button
+                  class="flex items-center gap-1.5 rounded-lg bg-destructive/10 border border-destructive/20 px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/20 transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
+                  :disabled="loading"
+                  @click="$emit('retry', stages[activeIndex].nextApprove || stages[activeIndex].key)"
+                >
+                  <RotateCcw class="h-3 w-3" />
+                  Retry this stage
+                </button>
+              </div>
+            </Transition>
           </div>
         </TransitionGroup>
       </div>
@@ -100,7 +151,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck } from "@lucide/vue";
+import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck, Hammer, FlaskConical, Zap, AlertCircle, RotateCcw } from "@lucide/vue";
 
 const props = defineProps<{
   state: any;
@@ -110,6 +161,10 @@ const props = defineProps<{
 const emit = defineEmits<{
   approve: [stage: string];
   edit: [stage: string, data: any];
+  validate: [];
+  analyze: [];
+  build: [];
+  retry: [stage: string];
 }>();
 
 const stages = [
@@ -119,6 +174,7 @@ const stages = [
   { key: "software_detailed", label: "Detailed Design", description: "Function-level design with SDK calls", dataKey: "software_detailed", nextApprove: "codegen", icon: Braces },
   { key: "codegen", label: "Code Generation", description: "Generating production C code via TDD", dataKey: "generated_code", nextApprove: "review", icon: Code2 },
   { key: "review", label: "AI Review", description: "Reviewing code for correctness and safety", dataKey: "review_result", nextApprove: "", icon: ShieldCheck },
+  { key: "build", label: "Build & Validate", description: "Static analysis, compilation, and firmware flashing", dataKey: "build_result", nextApprove: "", icon: Hammer },
 ];
 
 const activeIndex = computed(() => {
@@ -139,6 +195,8 @@ const stageData = computed(() => {
   const dataKey = stages[activeIndex.value]?.dataKey;
   return dataKey ? props.state?.[dataKey] : null;
 });
+
+const hasErrors = computed(() => props.state?.errors?.length > 0);
 
 const editableJson = ref("");
 

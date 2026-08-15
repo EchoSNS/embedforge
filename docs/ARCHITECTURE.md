@@ -24,6 +24,7 @@ EmbedForge is a multi-stage agentic AI pipeline that generates embedded C firmwa
 │                     Core Services Layer                      │
 │  DriverCatalog · PinValidator · Compiler · SDKAnalyzer      │
 │  ReferenceAnalyzer · TDDGenerator · AIReviewer              │
+│  StaticAnalyzer · FlashService                              │
 ├─────────────────────────────────────────────────────────────┤
 │                     Plugin Interface Layer                   │
 │  DriverCatalog · PinCapabilityProvider · CompilerBackend    │
@@ -109,6 +110,10 @@ sequenceDiagram
     LLM-->>WF: Production files
     WF->>P: compile(files)
     P-->>WF: CompilationResult
+
+    Note over WF: Static analysis (cppcheck)
+    Note over WF: Optional: flash to target (pyOCD)
+
     WF-->>UI: Show code + review
     U->>UI: Download
 ```
@@ -192,6 +197,27 @@ When compilation fails:
 4. LLM returns corrected files
 5. Re-compile
 6. Repeat (max 5 iterations, decreasing temperature)
+
+## Static Analysis (cppcheck)
+
+After code generation, `core/static_analyzer.py` optionally runs cppcheck:
+- Detects null pointer dereferences, buffer overflows, unused variables
+- Integrated into `CodeValidator.validate()` as an automatic pass
+- Available as a standalone endpoint: `POST /api/workflow/{id}/analyze`
+- Results are categorized by severity: error, warning, style, performance, portability
+- Critical issues (errors) are escalated to the validation report
+
+Requires `cppcheck` in PATH. If unavailable, the pass is silently skipped.
+
+## Firmware Flashing (pyOCD)
+
+`services/flash_service.py` provides firmware flashing via pyOCD:
+- Probe discovery: `GET /api/flash/probes`
+- Flash binary: `POST /api/flash/program`
+- Target reset: `POST /api/flash/reset`
+- Supports ST-LINK, CMSIS-DAP, and J-Link debug probes
+
+Requires `pip install pyocd` (optional dependency via `pip install -e ".[flash]"`).
 
 ## Configuration
 
