@@ -1,0 +1,15 @@
+name: NUCLEO-F446RE
+vendor: STMicroelectronics
+family: STM32F4
+mcu: STM32F446RETx
+clock_hz: 180000000
+plugin: stm32_hal
+sdk_env: STM32CUBE_F4_PATH
+include_paths:
+  - Drivers/STM32F4xx_HAL_Driver/Inc
+  - Drivers/CMSIS/Device/ST/STM32F4xx/Include
+  - Drivers/CMSIS/Include
+onboard:
+  led: {pin: PA5, label: LD2, active: high}
+  button: {pin: PC13, label: B1, active: low}
+  vcp: {tx: PA2, rx: PA3, peripheral: USART2, baud: 115200}

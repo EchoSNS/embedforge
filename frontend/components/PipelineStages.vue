@@ -59,7 +59,11 @@
             <!-- Expanded content for active stage -->
             <Transition name="fade-slide">
               <div v-if="idx === activeIndex && stageData" class="mt-4 space-y-3">
+                <!-- Build stage: structured results view -->
+                <BuildResults v-if="stage.key === 'build'" :results="stageData" />
+                <!-- Other stages: editable JSON -->
                 <textarea
+                  v-else
                   v-model="editableJson"
                   class="min-h-[16rem] max-h-[28rem] w-full rounded-lg border bg-background/50 p-3 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-ring/50 transition-all duration-200"
                   spellcheck="false"

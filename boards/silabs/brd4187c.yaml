@@ -1,0 +1,11 @@
+name: BRD4187C
+vendor: Silicon Laboratories
+family: EFR32MG24
+mcu: EFR32MG24B210F1536IM48
+clock_hz: 78000000
+plugin: silabs_gecko
+sdk_env: GSDK_PATH
+onboard:
+  led: {pin: PB2, label: LED0, active: high}
+  button: {pin: PB1, label: BTN0, active: low}
+  vcp: {tx: PA5, rx: PA6, peripheral: USART0, baud: 115200}

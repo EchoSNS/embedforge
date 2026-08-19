@@ -500,8 +500,9 @@ async def import_device_data(req: DeviceImportRequest):
     from core.importers.svd_parser import SVDParser
     from core.importers.cmsis_pack_importer import CMSISPackImporter
     from core.importers.atdf_importer import ATDFImporter
+    from core.importers.illd_pin_extractor import ILLDPinExtractor
 
-    importers = [CubeMXImporter(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
+    importers = [CubeMXImporter(), ILLDPinExtractor(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
 
     # Find a compatible importer
     importer = None
@@ -544,14 +545,83 @@ async def list_importable_devices(req: DeviceImportRequest):
     from core.importers.svd_parser import SVDParser
     from core.importers.cmsis_pack_importer import CMSISPackImporter
     from core.importers.atdf_importer import ATDFImporter
+    from core.importers.illd_pin_extractor import ILLDPinExtractor
 
-    importers = [CubeMXImporter(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
+    importers = [CubeMXImporter(), ILLDPinExtractor(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
     for imp in importers:
         if imp.can_import(req.path):
             devices = imp.list_available_devices(req.path)
-            return {"format": imp.source_format, "devices": devices[:200]}
+            # Mark already-imported devices
+            from core.device_db import get_device_db
+            db = get_device_db()
+            imported_names = {d["device"] for d in db.list_devices()}
+            return {
+                "format": imp.source_format,
+                "devices": devices[:500],
+                "already_imported": [d for d in devices[:500] if d in imported_names],
+            }
 
     raise HTTPException(400, "No compatible importer found for the given path.")
+
+
+class BulkImportRequest(BaseModel):
+    path: str
+    devices: List[str] = []  # Empty = import all
+
+
+@router.post("/device/import-bulk")
+async def bulk_import_devices(req: BulkImportRequest):
+    """Import multiple devices from a path. If devices list is empty, imports all."""
+    import asyncio
+    from core.device_db import get_device_db
+    from core.importers.cubemx_importer import CubeMXImporter
+    from core.importers.svd_parser import SVDParser
+    from core.importers.cmsis_pack_importer import CMSISPackImporter
+    from core.importers.atdf_importer import ATDFImporter
+    from core.importers.illd_pin_extractor import ILLDPinExtractor
+
+    importers = [CubeMXImporter(), ILLDPinExtractor(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
+    importer = None
+    for imp in importers:
+        if imp.can_import(req.path):
+            importer = imp
+            break
+
+    if not importer:
+        raise HTTPException(400, "No compatible importer found.")
+
+    device_names = req.devices if req.devices else importer.list_available_devices(req.path)
+    # Cap to prevent runaway imports
+    device_names = device_names[:200]
+
+    log.step(f"Bulk importing {len(device_names)} devices…", f"Source: {req.path}")
+
+    def _do_import():
+        db = get_device_db()
+        results = {"imported": 0, "failed": 0, "skipped": 0, "devices": []}
+        for i, name in enumerate(device_names):
+            try:
+                info = importer.import_device(req.path, name)
+                if info and info.pin_mux:
+                    db.import_device(info)
+                    results["imported"] += 1
+                    results["devices"].append({"device": info.device, "pins": len(info.pin_mux)})
+                elif info:
+                    results["skipped"] += 1
+                else:
+                    results["failed"] += 1
+            except Exception:
+                results["failed"] += 1
+            if (i + 1) % 10 == 0:
+                log.info(f"Bulk import progress: {i + 1}/{len(device_names)}")
+        return results
+
+    results = await asyncio.to_thread(_do_import)
+
+    log.success(
+        f"Bulk import complete: {results['imported']} imported, {results['skipped']} skipped, {results['failed']} failed"
+    )
+    return results
 
 
 @router.get("/device/imported")
@@ -560,6 +630,23 @@ async def list_imported_devices():
     from core.device_db import get_device_db
     db = get_device_db()
     return {"devices": db.list_devices(), "total": db.get_device_count()}
+
+
+@router.delete("/device/{device_name}")
+async def delete_imported_device(device_name: str):
+    """Remove a device from the device database."""
+    from core.device_db import get_device_db
+    db = get_device_db()
+    device_id = db.find_device(device_name)
+    if device_id is None:
+        raise HTTPException(404, f"Device '{device_name}' not found")
+    conn = db._get_conn()
+    conn.execute("DELETE FROM pin_mux WHERE device_id=?", (device_id,))
+    conn.execute("DELETE FROM peripherals WHERE device_id=?", (device_id,))
+    conn.execute("DELETE FROM registers WHERE device_id=?", (device_id,))
+    conn.execute("DELETE FROM devices WHERE id=?", (device_id,))
+    conn.commit()
+    return {"status": "deleted", "device": device_name}
 
 
 @router.get("/device/{device_name}/pins")
@@ -581,6 +668,84 @@ async def get_device_pins(device_name: str, peripheral_type: str = ""):
              "peripheral": p.peripheral, "type": p.peripheral_type}
             for p in pins[:500]
         ],
+    }
+
+
+class GenerateBoardRequest(BaseModel):
+    board_name: str
+    led_pin: str = ""
+    led_label: str = "LED"
+    button_pin: str = ""
+    button_label: str = "BTN"
+    vcp_tx: str = ""
+    vcp_rx: str = ""
+    vcp_peripheral: str = ""
+    plugin: str = "stm32_hal"
+
+
+@router.post("/device/{device_name}/generate-board")
+async def generate_board_yaml(device_name: str, req: GenerateBoardRequest):
+    """Auto-generate a board YAML file from imported device data."""
+    from core.device_db import get_device_db
+    from core.board_registry import get_board_registry
+
+    db = get_device_db()
+    device_id = db.find_device(device_name)
+    if device_id is None:
+        raise HTTPException(404, f"Device '{device_name}' not found in database")
+
+    # Get device metadata
+    devices = db.list_devices()
+    device_meta = next((d for d in devices if d["device"] == device_name), None)
+    if not device_meta:
+        raise HTTPException(404, "Device metadata not found")
+
+    vendor = device_meta.get("vendor", "Unknown")
+    family = device_meta.get("family", "")
+
+    # Build YAML content
+    lines = [
+        f"name: {req.board_name}",
+        f"vendor: {vendor}",
+        f"family: {family}",
+        f"mcu: {device_name}",
+        f"clock_hz: 0",
+        f"plugin: {req.plugin}",
+    ]
+
+    onboard_lines = []
+    if req.led_pin:
+        onboard_lines.append(f"  led: {{pin: {req.led_pin}, label: {req.led_label}, active: high}}")
+    if req.button_pin:
+        onboard_lines.append(f"  button: {{pin: {req.button_pin}, label: {req.button_label}, active: low}}")
+    if req.vcp_tx and req.vcp_rx:
+        onboard_lines.append(f"  vcp: {{tx: {req.vcp_tx}, rx: {req.vcp_rx}, peripheral: {req.vcp_peripheral or 'UART0'}, baud: 115200}}")
+
+    if onboard_lines:
+        lines.append("onboard:")
+        lines.extend(onboard_lines)
+
+    yaml_content = "\n".join(lines) + "\n"
+
+    # Write to boards directory
+    boards_dir = Path(__file__).resolve().parent.parent.parent / "boards"
+    vendor_dir = boards_dir / vendor.lower().split()[0]
+    vendor_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_name = req.board_name.lower().replace(" ", "-")
+    safe_name = "".join(c for c in safe_name if c.isalnum() or c in "-_")
+    filepath = vendor_dir / f"{safe_name}.yaml"
+    filepath.write_text(yaml_content, encoding="utf-8")
+
+    # Refresh board registry
+    get_board_registry().refresh()
+
+    log.success(f"Generated board YAML: {filepath.name}", f"Board: {req.board_name}")
+
+    return {
+        "board_name": req.board_name,
+        "file": str(filepath),
+        "content": yaml_content,
     }
 
 

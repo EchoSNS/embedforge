@@ -9,35 +9,47 @@
         </NuxtLink>
       </div>
       <div class="flex-1 p-4 space-y-4">
-        <div class="space-y-1">
+        <div class="space-y-2">
           <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Time Range</span>
-          <select v-model="bucketMinutes" class="w-full rounded-lg border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
-            <option :value="5">5 min buckets</option>
-            <option :value="15">15 min buckets</option>
-            <option :value="60">Hourly</option>
-            <option :value="1440">Daily</option>
-          </select>
+          <div class="grid grid-cols-2 gap-1">
+            <button
+              v-for="opt in timeOptions"
+              :key="opt.value"
+              class="rounded-lg px-2 py-1.5 text-[10px] font-medium transition-all"
+              :class="bucketMinutes === opt.value ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground hover:text-foreground'"
+              @click="bucketMinutes = opt.value; refresh()"
+            >{{ opt.label }}</button>
+          </div>
         </div>
 
         <!-- Budget Config -->
-        <div class="space-y-1">
-          <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Budget Limit</span>
-          <div class="flex gap-1.5">
-            <div class="relative flex-1">
-              <span class="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
+        <div class="space-y-2">
+          <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Budget</span>
+          <div class="space-y-2">
+            <div class="relative">
+              <span class="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">$</span>
               <input
                 v-model.number="budgetInput"
                 type="number"
-                step="0.01"
+                step="0.5"
                 min="0"
-                class="w-full rounded-lg border bg-background pl-5 pr-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-                placeholder="None"
+                class="w-full rounded-lg border bg-background pl-6 pr-2 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
+                placeholder="Set limit"
+                @keydown.enter="applyBudget"
               />
             </div>
+            <input
+              v-model.number="budgetInput"
+              type="range"
+              min="0"
+              max="50"
+              step="0.5"
+              class="w-full h-1.5 rounded-full accent-primary cursor-pointer"
+            />
             <button
-              class="rounded-lg border px-2 py-1.5 text-xs hover:bg-accent transition-colors"
+              class="w-full rounded-lg bg-primary/10 text-primary px-2 py-1.5 text-[10px] font-medium hover:bg-primary/20 transition-colors"
               @click="applyBudget"
-            >Set</button>
+            >Apply</button>
           </div>
         </div>
 
@@ -62,6 +74,19 @@
             <AlertTriangle class="h-3 w-3" />
             Budget exceeded
           </div>
+        </div>
+
+        <!-- Auto-refresh -->
+        <div class="space-y-2">
+          <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Auto-Refresh</span>
+          <button
+            class="w-full flex items-center justify-between rounded-lg border px-3 py-2 text-xs transition-colors"
+            :class="autoRefresh ? 'border-primary/50 bg-primary/5' : 'hover:bg-accent'"
+            @click="toggleAutoRefresh"
+          >
+            <span>{{ autoRefresh ? 'On (30s)' : 'Off' }}</span>
+            <span class="h-2 w-2 rounded-full" :class="autoRefresh ? 'bg-green-400 animate-pulse' : 'bg-muted-foreground/30'" />
+          </button>
         </div>
 
         <NuxtLink to="/settings" class="flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors mt-4">
@@ -262,6 +287,13 @@ import { useCostTracker, type TimeBucket, type StageTotal } from "~/composables/
 const bucketMinutes = ref(60);
 const budgetInput = ref<number | undefined>(undefined);
 
+const timeOptions = [
+  { label: "5 min", value: 5 },
+  { label: "15 min", value: 15 },
+  { label: "Hourly", value: 60 },
+  { label: "Daily", value: 1440 },
+];
+
 const { globalSummary, recentCalls, metrics, cacheStats, loading, refresh, setBudget, clearCache } = useCostTracker();
 
 const timeSeries = computed<TimeBucket[]>(() => metrics.value?.time_series ?? []);
@@ -280,6 +312,19 @@ const budgetBarColor = computed(() => {
 });
 
 watch(bucketMinutes, () => refresh());
+
+const autoRefresh = ref(false);
+let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+function toggleAutoRefresh() {
+  autoRefresh.value = !autoRefresh.value;
+  if (autoRefresh.value) {
+    autoRefreshTimer = setInterval(() => refresh(), 30_000);
+  } else if (autoRefreshTimer) {
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer = null;
+  }
+}
 
 function applyBudget() {
   setBudget(budgetInput.value && budgetInput.value > 0 ? budgetInput.value : null);

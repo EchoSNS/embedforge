@@ -1,0 +1,11 @@
+name: SAM-E54-Xplained-Pro
+vendor: Microchip Technology
+family: SAME54
+mcu: ATSAME54P20A
+clock_hz: 120000000
+plugin: microchip_harmony
+sdk_env: HARMONY3_PATH
+onboard:
+  led: {pin: PC18, label: LED0, active: low}
+  button: {pin: PB31, label: SW0, active: low}
+  vcp: {tx: PB25, rx: PB24, peripheral: SERCOM2, baud: 115200}

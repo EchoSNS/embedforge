@@ -110,6 +110,10 @@ void MX_TIM1_Init(void);
 
 
 def test_cost_tracker():
+    import tempfile
+    from pathlib import Path
+    import core.cost_tracker as ct
+    ct._COST_DB_PATH = Path(tempfile.mktemp(suffix=".db"))
     from core.cost_tracker import CostTracker
 
     tracker = CostTracker()

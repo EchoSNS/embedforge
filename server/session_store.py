@@ -124,6 +124,16 @@ class SessionStore:
         except Exception:
             return False
 
+    def __delitem__(self, session_id: str) -> None:
+        self._cache.pop(session_id, None)
+        if self._enabled:
+            try:
+                with self._lock:
+                    self._conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+                    self._conn.commit()
+            except Exception:
+                pass
+
     def get(self, session_id: str, default=None):
         try:
             return self[session_id]

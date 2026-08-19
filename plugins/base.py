@@ -418,17 +418,35 @@ class PluginRegistry:
 
     def get_board_template(self, board_name: str) -> BoardTemplate:
         manifest = self._require_active()
+        # Check plugin-defined boards first
         class_path = manifest.board_template_classes.get(board_name)
-        if not class_path:
-            raise ValueError(
-                f"Board '{board_name}' not found in plugin '{manifest.name}'. "
-                f"Available: {list(manifest.board_template_classes.keys())}"
-            )
-        return self._instantiate(class_path)
+        if class_path:
+            return self._instantiate(class_path)
+
+        # Fall back to YAML board registry
+        from core.board_registry import get_board_registry
+        reg = get_board_registry()
+        template = reg.get_template(board_name)
+        if template:
+            return template
+
+        raise ValueError(
+            f"Board '{board_name}' not found. "
+            f"Available: {self.list_boards()}"
+        )
 
     def list_boards(self) -> List[str]:
         manifest = self._require_active()
-        return list(manifest.board_template_classes.keys())
+        plugin_boards = list(manifest.board_template_classes.keys())
+
+        # Merge with YAML board registry
+        from core.board_registry import get_board_registry
+        reg = get_board_registry()
+        yaml_boards = reg.list_boards()
+
+        # Deduplicate preserving order
+        all_boards = list(dict.fromkeys(plugin_boards + yaml_boards))
+        return all_boards
 
     def get_capability_profile(self) -> Optional[CapabilityProfile]:
         """Load the active plugin's capability profile from profile.yaml."""

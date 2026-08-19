@@ -84,14 +84,13 @@ const highlightedCode = computed(() => {
 
 function highlightC(code: string): string {
   const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // Tokenize with placeholders to prevent nested span corruption
   const lines = escaped.split("\n");
   return lines.map(line => {
     const tokens: string[] = [];
     const ph = (cls: string, text: string) => {
       const i = tokens.length;
       tokens.push(`<span class="${cls}">${text}</span>`);
-      return `\x00${i}\x00`;
+      return `\uE000${i}\uE001`;
     };
     let r = line;
     r = r.replace(/(\/\/.*)/g, (_, m) => ph("text-white/30 italic", m));
@@ -101,7 +100,9 @@ function highlightC(code: string): string {
     r = r.replace(/\b(HAL_\w+|__HAL_\w+)\b/g, (_, m) => ph("text-amber-400", m));
     r = r.replace(/\b(void|int|uint32_t|uint16_t|uint8_t|int32_t|int16_t|int8_t|size_t|bool|char|float|double|struct|enum|typedef|static|const|volatile|extern|return|if|else|while|for|switch|case|break|default|true|false|NULL)\b/g, (_, m) => ph("text-sky-400", m));
     r = r.replace(/\b(0[xX][0-9a-fA-F]+[UuLl]*|[0-9]+[UuLl]*)\b/g, (_, m) => ph("text-orange-300", m));
-    r = r.replace(/\x00(\d+)\x00/g, (_, idx) => tokens[parseInt(idx)]);
+    // Restore tokens and strip any orphaned placeholders
+    r = r.replace(/\uE000(\d+)\uE001/g, (_, idx) => tokens[parseInt(idx)] || "");
+    r = r.replace(/[\uE000\uE001]/g, "");
     return r;
   }).join("\n");
 }

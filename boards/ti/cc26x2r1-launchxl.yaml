@@ -1,0 +1,11 @@
+name: CC26X2R1-LAUNCHXL
+vendor: Texas Instruments
+family: CC26x2
+mcu: CC2652R1FRGZ
+clock_hz: 48000000
+plugin: ti_simplelink
+sdk_env: SIMPLELINK_SDK_PATH
+onboard:
+  led: {pin: DIO7, label: LED_RED, active: high}
+  button: {pin: DIO13, label: BTN-1, active: low}
+  vcp: {tx: DIO3, rx: DIO2, peripheral: UART0, baud: 115200}

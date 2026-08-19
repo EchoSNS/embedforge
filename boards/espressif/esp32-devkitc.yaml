@@ -1,0 +1,10 @@
+name: ESP32-DevKitC
+vendor: Espressif Systems
+family: ESP32
+mcu: ESP32
+clock_hz: 240000000
+plugin: espressif_idf
+sdk_env: IDF_PATH
+onboard:
+  led: {pin: GPIO2, label: LED, active: high}
+  vcp: {tx: GPIO1, rx: GPIO3, peripheral: UART0, baud: 115200}

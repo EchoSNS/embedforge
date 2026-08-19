@@ -70,6 +70,14 @@ async def list_sessions(limit: int = 50):
     return _sessions.list_sessions(min(limit, 200))
 
 
+@router.delete("/{session_id}")
+async def delete_session(session_id: str):
+    """Delete a session from the store."""
+    if session_id in _sessions:
+        del _sessions[session_id]
+    return {"status": "deleted"}
+
+
 @router.get("/{session_id}/state")
 async def get_state(session_id: str):
     state = _get_session(session_id)

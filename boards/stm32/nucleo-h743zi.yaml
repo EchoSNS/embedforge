@@ -1,0 +1,15 @@
+name: NUCLEO-H743ZI
+vendor: STMicroelectronics
+family: STM32H7
+mcu: STM32H743ZITx
+clock_hz: 480000000
+plugin: stm32_hal
+sdk_env: STM32CUBE_H7_PATH
+include_paths:
+  - Drivers/STM32H7xx_HAL_Driver/Inc
+  - Drivers/CMSIS/Device/ST/STM32H7xx/Include
+  - Drivers/CMSIS/Include
+onboard:
+  led: {pin: PB0, label: LD1, active: high}
+  button: {pin: PC13, label: B1, active: low}
+  vcp: {tx: PD8, rx: PD9, peripheral: USART3, baud: 115200}

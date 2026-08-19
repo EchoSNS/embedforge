@@ -5,6 +5,7 @@
 
 import { useState } from "#app";
 import { useRuntimeConfig } from "#app";
+import { watch } from "vue";
 
 export interface WorkflowState {
   session_id: string;
@@ -22,12 +23,20 @@ export interface WorkflowState {
   history: any[];
 }
 
+export interface SessionMeta {
+  session_id: string;
+  stage: string;
+  board_name: string;
+  created_at: string;
+  updated_at?: string;
+}
+
 export function useWorkflow() {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
   // useState persists across client-side page navigations
   const currentSession = useState<WorkflowState | null>("workflow-session", () => null);
-  const sessionList = useState<string[]>("workflow-sessions", () => []);
+  const sessionList = useState<SessionMeta[]>("workflow-sessions", () => []);
 
   async function fetchBoards() {
     const res = await fetch(`${apiBase}/api/plugins/boards`);
@@ -44,8 +53,13 @@ export function useWorkflow() {
 
     const stateRes = await fetch(`${apiBase}/api/workflow/${data.session_id}/state`);
     currentSession.value = await stateRes.json();
-    if (currentSession.value && !sessionList.value.includes(currentSession.value.session_id)) {
-      sessionList.value.push(currentSession.value.session_id);
+    if (currentSession.value && !sessionList.value.some(s => s.session_id === currentSession.value!.session_id)) {
+      sessionList.value.unshift({
+        session_id: currentSession.value.session_id,
+        stage: currentSession.value.stage,
+        board_name: currentSession.value.board_name,
+        created_at: new Date().toISOString(),
+      });
     }
   }
 
@@ -125,5 +139,41 @@ export function useWorkflow() {
     return `${apiBase}/api/workflow/${currentSession.value.session_id}/download/full`;
   }
 
-  return { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, getDownloadUrl, getStageDownloadUrl, getFullPackageDownloadUrl, fetchBoards };
+  async function hydrateSessions() {
+    try {
+      const res = await fetch(`${apiBase}/api/workflow/sessions/list?limit=50`);
+      if (!res.ok) return;
+      const sessions: SessionMeta[] = await res.json();
+      sessionList.value = sessions;
+
+      // Restore last active session from localStorage
+      if (!currentSession.value && typeof window !== "undefined") {
+        const lastId = localStorage.getItem("embedforge_active_session");
+        if (lastId && sessions.some(s => s.session_id === lastId)) {
+          await loadSession(lastId);
+        }
+      }
+    } catch { /* backend not reachable */ }
+  }
+
+  async function deleteSession(sessionId: string) {
+    try {
+      await fetch(`${apiBase}/api/workflow/${sessionId}`, { method: "DELETE" });
+      sessionList.value = sessionList.value.filter(s => s.session_id !== sessionId);
+      if (currentSession.value?.session_id === sessionId) {
+        currentSession.value = null;
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Track active session in localStorage
+  if (typeof window !== "undefined") {
+    watch(currentSession, (val) => {
+      if (val?.session_id) {
+        localStorage.setItem("embedforge_active_session", val.session_id);
+      }
+    });
+  }
+
+  return { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, hydrateSessions, deleteSession, getDownloadUrl, getStageDownloadUrl, getFullPackageDownloadUrl, fetchBoards };
 }

@@ -1,0 +1,11 @@
+name: EK-RA6M5
+vendor: Renesas Electronics
+family: RA6M5
+mcu: R7FA6M5BH3CFC
+clock_hz: 200000000
+plugin: renesas_fsp
+sdk_env: FSP_PATH
+onboard:
+  led: {pin: P004, label: LED1, active: low}
+  button: {pin: P005, label: SW1, active: low}
+  vcp: {tx: P411, rx: P410, peripheral: SCI0, baud: 115200}

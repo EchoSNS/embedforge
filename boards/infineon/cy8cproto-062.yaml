@@ -1,0 +1,11 @@
+name: CY8CPROTO-062-4343W
+vendor: Infineon Technologies
+family: PSoC62
+mcu: CY8C6247BZI-D54
+clock_hz: 150000000
+plugin: infineon_mtb
+sdk_env: MTB_PATH
+onboard:
+  led: {pin: P13_7, label: LED, active: low}
+  button: {pin: P0_4, label: SW2, active: low}
+  vcp: {tx: P5_1, rx: P5_0, peripheral: SCB5, baud: 115200}

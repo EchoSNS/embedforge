@@ -1,8 +1,16 @@
 """Test dynamic cost tracking enhancements."""
 
 import os
+import tempfile
 import time
+from pathlib import Path
 from core.cost_tracker import CostTrackingCallback, CostTracker, get_model_pricing
+import core.cost_tracker as _ct
+
+
+def _fresh_tracker():
+    _ct._COST_DB_PATH = Path(tempfile.mktemp(suffix=".db"))
+    return CostTracker()
 
 
 def test_pricing_override():
@@ -21,7 +29,7 @@ def test_usage_metadata_path():
     from langchain_core.outputs import LLMResult, ChatGeneration
     from langchain_core.messages import AIMessage
 
-    tracker = CostTracker()
+    tracker = _fresh_tracker()
 
     msg = AIMessage(
         content="test",
@@ -56,7 +64,7 @@ def test_llm_output_fallback():
     from langchain_core.outputs import LLMResult, ChatGeneration
     from langchain_core.messages import AIMessage
 
-    tracker = CostTracker()
+    tracker = _fresh_tracker()
 
     # No usage_metadata, only llm_output
     msg = AIMessage(content="test")

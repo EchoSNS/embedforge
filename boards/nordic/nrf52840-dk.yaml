@@ -1,0 +1,11 @@
+name: nRF52840-DK
+vendor: Nordic Semiconductor
+family: nRF52
+mcu: nRF52840
+clock_hz: 64000000
+plugin: nordic_nrfconnect
+sdk_env: NRF_SDK_PATH
+onboard:
+  led: {pin: P0.13, label: LED1, active: low}
+  button: {pin: P0.11, label: Button1, active: low}
+  vcp: {tx: P0.06, rx: P0.08, peripheral: UARTE0, baud: 115200}

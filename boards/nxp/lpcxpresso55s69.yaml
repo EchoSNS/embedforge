@@ -1,0 +1,15 @@
+name: LPCXpresso55S69
+vendor: NXP Semiconductors
+family: LPC55S6x
+mcu: LPC55S69JBD100
+clock_hz: 150000000
+plugin: nxp_mcuxpresso
+sdk_env: MCUXPRESSO_SDK_PATH
+include_paths:
+  - devices/LPC55S69/drivers
+  - devices/LPC55S69
+  - CMSIS/Include
+onboard:
+  led: {pin: PIO1_4, label: LED_RED, active: low}
+  button: {pin: PIO0_5, label: SW2, active: low}
+  vcp: {tx: PIO0_30, rx: PIO0_29, peripheral: FLEXCOMM0, baud: 115200}

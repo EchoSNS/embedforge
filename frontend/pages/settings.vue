@@ -210,7 +210,17 @@
             <!-- Available Devices -->
             <Transition name="fade-slide">
               <div v-if="deviceAvailable.length" class="space-y-2">
-                <p class="text-xs font-medium text-muted-foreground">Available Devices ({{ deviceAvailable.length }})</p>
+                <div class="flex items-center justify-between">
+                  <p class="text-xs font-medium text-muted-foreground">Available Devices ({{ deviceAvailable.length }})</p>
+                  <button
+                    class="flex items-center gap-1 rounded px-2 py-1 text-[10px] bg-primary/10 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
+                    :disabled="deviceImporting"
+                    @click="bulkImportAll"
+                  >
+                    <HardDrive class="h-3 w-3" />
+                    Import All ({{ deviceAvailable.length }})
+                  </button>
+                </div>
                 <input
                   v-model="deviceFilter"
                   class="w-full rounded-lg border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
@@ -221,22 +231,32 @@
                     v-for="dev in filteredDevices"
                     :key="dev"
                     class="flex w-full items-center gap-2 rounded px-2 py-1 text-xs hover:bg-accent transition-colors text-left"
-                    :class="{ 'bg-primary/10 text-primary': deviceSelectedName === dev }"
+                    :class="{
+                      'bg-primary/10 text-primary': deviceSelectedName === dev,
+                      'opacity-50': alreadyImported.includes(dev),
+                    }"
                     @click="deviceSelectedName = dev"
                   >
                     <Cpu class="h-3 w-3 shrink-0" />
-                    {{ dev }}
+                    <span class="flex-1">{{ dev }}</span>
+                    <span v-if="alreadyImported.includes(dev)" class="text-[9px] text-green-500">✓</span>
                   </button>
                 </div>
-                <button
-                  class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
-                  :disabled="!deviceSelectedName || deviceImporting"
-                  @click="importDevice(deviceSelectedName)"
-                >
-                  <HardDrive v-if="!deviceImporting" class="h-3 w-3" />
-                  <Loader2 v-else class="h-3 w-3 animate-spin" />
-                  Import Selected
-                </button>
+                <div class="flex gap-2">
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
+                    :disabled="!deviceSelectedName || deviceImporting"
+                    @click="importDevice(deviceSelectedName)"
+                  >
+                    <HardDrive v-if="!deviceImporting" class="h-3 w-3" />
+                    <Loader2 v-else class="h-3 w-3 animate-spin" />
+                    Import Selected
+                  </button>
+                  <span v-if="bulkProgress" class="flex items-center text-[10px] text-muted-foreground">
+                    <Loader2 class="h-3 w-3 animate-spin mr-1" />
+                    {{ bulkProgress }}
+                  </span>
+                </div>
               </div>
             </Transition>
 
@@ -253,20 +273,109 @@
                 </p>
               </div>
             </Transition>
+
+            <!-- Generate Board YAML -->
+            <Transition name="fade-slide">
+              <div v-if="deviceImportResult && deviceImportResult.pin_mux_count > 0" class="rounded-lg border p-3 space-y-3">
+                <p class="text-xs font-medium">Generate Board Config</p>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">Board Name</label>
+                    <input v-model="boardGenName" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" :placeholder="deviceImportResult.device" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">LED Pin</label>
+                    <input v-model="boardGenLed" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" placeholder="e.g. PA5" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">Button Pin</label>
+                    <input v-model="boardGenBtn" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" placeholder="e.g. PC13" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">VCP TX Pin</label>
+                    <input v-model="boardGenTx" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" placeholder="e.g. PA2" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">VCP RX Pin</label>
+                    <input v-model="boardGenRx" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" placeholder="e.g. PA3" />
+                  </div>
+                  <div class="space-y-1">
+                    <label class="text-[10px] text-muted-foreground">VCP Peripheral</label>
+                    <input v-model="boardGenVcpPeriph" class="w-full rounded border bg-background px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-ring" placeholder="e.g. USART2" />
+                  </div>
+                </div>
+                <button
+                  class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
+                  :disabled="!boardGenName && !deviceImportResult?.device"
+                  @click="generateBoard"
+                >
+                  <Sparkles class="h-3 w-3" />
+                  Generate Board YAML
+                </button>
+                <p v-if="boardGenResult" class="text-[10px] text-green-600">✓ Board "{{ boardGenResult.board_name }}" created</p>
+              </div>
+            </Transition>
           </div>
 
           <!-- Imported Devices Table -->
           <div v-if="deviceImported.length" class="rounded-xl border bg-card overflow-hidden">
-            <div class="border-b px-4 py-3">
+            <div class="border-b px-4 py-3 flex items-center justify-between">
               <p class="text-sm font-medium">Imported Devices ({{ deviceImported.length }})</p>
             </div>
-            <div class="divide-y max-h-64 overflow-y-auto">
-              <div v-for="dev in deviceImported" :key="dev.device" class="flex items-center justify-between px-4 py-2.5">
-                <div>
-                  <p class="text-xs font-medium">{{ dev.device }}</p>
-                  <p class="text-[10px] text-muted-foreground">{{ dev.vendor }} · {{ dev.family }} · {{ dev.source_format }}</p>
+            <!-- Vendor filter tabs -->
+            <div v-if="deviceVendors.length > 1" class="flex border-b overflow-x-auto px-2 pt-1">
+              <button
+                v-for="v in ['All', ...deviceVendors]" :key="v"
+                class="px-2.5 py-1 text-[10px] font-medium whitespace-nowrap border-b-2 transition-colors"
+                :class="deviceVendorFilter === v ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'"
+                @click="deviceVendorFilter = v"
+              >{{ v }}</button>
+            </div>
+            <div class="divide-y max-h-80 overflow-y-auto">
+              <div v-for="dev in filteredImportedDevices" :key="dev.device" class="px-4 py-2.5">
+                <div class="flex items-center justify-between cursor-pointer" @click="toggleDeviceExpand(dev.device)">
+                  <div>
+                    <p class="text-xs font-medium">{{ dev.device }}</p>
+                    <p class="text-[10px] text-muted-foreground">{{ dev.vendor }} · {{ dev.family }} · {{ dev.source_format }}</p>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-muted-foreground rounded-full bg-secondary px-2 py-0.5">{{ dev.package || '—' }}</span>
+                    <button
+                      class="h-5 w-5 rounded flex items-center justify-center hover:bg-destructive/20 hover:text-destructive transition-all opacity-50 hover:opacity-100"
+                      title="Remove device"
+                      @click.stop="deleteImportedDevice(dev.device)"
+                    >
+                      <Trash2 class="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
-                <span class="text-[10px] text-muted-foreground rounded-full bg-secondary px-2 py-0.5">{{ dev.package || '—' }}</span>
+                <!-- Expanded Details -->
+                <Transition name="fade-slide">
+                  <div v-if="expandedDevice === dev.device" class="mt-2 pl-2 border-l-2 border-primary/20 space-y-1">
+                    <p class="text-[10px] text-muted-foreground">Core: {{ dev.core || 'Unknown' }}</p>
+                    <p class="text-[10px] text-muted-foreground">Source: {{ dev.source_format }}</p>
+                    <div class="flex gap-2 mt-1.5">
+                      <button
+                        class="rounded px-2 py-1 text-[10px] bg-primary/10 text-primary hover:bg-primary/20 transition-colors"
+                        @click="viewDevicePins(dev.device)"
+                      >View Pins</button>
+                      <button
+                        class="rounded px-2 py-1 text-[10px] bg-secondary hover:bg-accent transition-colors"
+                        @click="devicePath = dev.source_file || ''; listDevicesAtPath()"
+                      >Re-import</button>
+                    </div>
+                    <!-- Pin preview -->
+                    <div v-if="devicePinsPreview && devicePinsDevice === dev.device" class="mt-2 max-h-32 overflow-y-auto rounded bg-background p-2 space-y-0.5">
+                      <div v-for="pin in devicePinsPreview.slice(0, 20)" :key="pin.pin + pin.signal"
+                        class="text-[9px] font-mono flex gap-2">
+                        <span class="text-primary w-8">{{ pin.pin }}</span>
+                        <span class="text-muted-foreground">→</span>
+                        <span>{{ pin.signal }} <span class="text-muted-foreground">(AF{{ pin.af }})</span></span>
+                      </div>
+                      <p v-if="devicePinsPreview.length > 20" class="text-[9px] text-muted-foreground">... {{ devicePinsPreview.length - 20 }} more</p>
+                    </div>
+                  </div>
+                </Transition>
               </div>
             </div>
           </div>
@@ -596,6 +705,33 @@ const browseEntries = ref<any[]>([]);
 const browsePath = ref("");
 const discoveredTools = ref<any[]>([]);
 
+// Board generation state
+const boardGenName = ref("");
+const boardGenLed = ref("");
+const boardGenBtn = ref("");
+const boardGenTx = ref("");
+const boardGenRx = ref("");
+const boardGenVcpPeriph = ref("");
+const boardGenResult = ref<any>(null);
+
+// Device expand/detail state
+const expandedDevice = ref("");
+const devicePinsPreview = ref<any[]>([]);
+const devicePinsDevice = ref("");
+const alreadyImported = ref<string[]>([]);
+const bulkProgress = ref("");
+const deviceVendorFilter = ref("All");
+
+const deviceVendors = computed(() => {
+  const vendors = new Set(deviceImported.value.map((d: any) => d.vendor || "Unknown"));
+  return [...vendors].sort();
+});
+
+const filteredImportedDevices = computed(() => {
+  if (deviceVendorFilter.value === "All") return deviceImported.value;
+  return deviceImported.value.filter((d: any) => d.vendor === deviceVendorFilter.value);
+});
+
 const filteredDevices = computed(() => {
   if (!deviceFilter.value) return deviceAvailable.value.slice(0, 100);
   const q = deviceFilter.value.toUpperCase();
@@ -716,6 +852,7 @@ async function listDevicesAtPath() {
   if (!devicePath.value.trim()) return;
   deviceImporting.value = true;
   deviceAvailable.value = [];
+  alreadyImported.value = [];
   try {
     const res = await fetch(`${apiBase}/api/sdk/device/list-available`, {
       method: "POST",
@@ -724,8 +861,34 @@ async function listDevicesAtPath() {
     });
     const data = await res.json();
     deviceAvailable.value = data.devices || [];
+    alreadyImported.value = data.already_imported || [];
   } catch { /* ignore */ }
   deviceImporting.value = false;
+}
+
+async function bulkImportAll() {
+  if (!devicePath.value.trim()) return;
+  const count = deviceAvailable.value.length;
+  if (count > 50 && !confirm(`Import all ${count} devices? This may take a few minutes.`)) return;
+
+  deviceImporting.value = true;
+  bulkProgress.value = `Starting import of ${count} devices…`;
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/import-bulk`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: devicePath.value, devices: [] }),
+    });
+    const data = await res.json();
+    bulkProgress.value = `Done: ${data.imported} imported, ${data.skipped} skipped, ${data.failed} failed`;
+    await refreshImportedDevices();
+    // Refresh imported markers
+    alreadyImported.value = [...new Set([...alreadyImported.value, ...(data.devices || []).map((d: any) => d.device)])];
+  } catch {
+    bulkProgress.value = "Import failed";
+  }
+  deviceImporting.value = false;
+  setTimeout(() => { bulkProgress.value = ""; }, 8000);
 }
 
 async function importDevice(deviceName: string = "") {
@@ -771,6 +934,50 @@ async function runAutoDiscovery() {
     const res = await fetch(`${apiBase}/api/sdk/discover`);
     const data = await res.json();
     discoveredTools.value = data.tools || [];
+  } catch { /* ignore */ }
+}
+
+async function generateBoard() {
+  const devName = deviceImportResult.value?.device;
+  if (!devName) return;
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(devName)}/generate-board`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        board_name: boardGenName.value || devName,
+        led_pin: boardGenLed.value,
+        led_label: "LED",
+        button_pin: boardGenBtn.value,
+        button_label: "BTN",
+        vcp_tx: boardGenTx.value,
+        vcp_rx: boardGenRx.value,
+        vcp_peripheral: boardGenVcpPeriph.value,
+      }),
+    });
+    if (res.ok) boardGenResult.value = await res.json();
+  } catch { /* ignore */ }
+}
+
+function toggleDeviceExpand(device: string) {
+  expandedDevice.value = expandedDevice.value === device ? "" : device;
+  devicePinsPreview.value = [];
+  devicePinsDevice.value = "";
+}
+
+async function viewDevicePins(device: string) {
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(device)}/pins?peripheral_type=`);
+    const data = await res.json();
+    devicePinsPreview.value = data.pins || [];
+    devicePinsDevice.value = device;
+  } catch { /* ignore */ }
+}
+
+async function deleteImportedDevice(device: string) {
+  try {
+    await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(device)}`, { method: "DELETE" });
+    await refreshImportedDevices();
   } catch { /* ignore */ }
 }
 

@@ -5,9 +5,11 @@
       :boards="boards"
       :active-board="activeBoard"
       :sessions="sessionList"
+      :current-session-id="currentSession?.session_id"
       @select-board="activeBoard = $event"
       @new-session="startNewSession"
       @select-session="loadSelectedSession"
+      @delete-session="deleteSession"
     />
 
     <!-- Main Content -->
@@ -167,10 +169,37 @@
           </div>
         </div>
 
-        <!-- Code Viewer Panel -->
+        <!-- Code Viewer / Architecture Panel -->
         <Transition name="slide-in-right">
-          <div v-if="currentSession?.generated_code && Object.keys(currentSession.generated_code).length" class="w-[40%] overflow-hidden">
-            <CodeViewer :files="currentSession.generated_code" :session-id="currentSession.session_id" />
+          <div v-if="currentSession?.generated_code && Object.keys(currentSession.generated_code).length" class="w-[40%] overflow-hidden flex flex-col">
+            <!-- Tab Toggle -->
+            <div class="flex border-b bg-card/50">
+              <button
+                class="flex-1 px-4 py-2 text-xs font-medium transition-colors relative"
+                :class="rightPanel === 'code' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                @click="rightPanel = 'code'"
+              >
+                Code
+                <span v-if="rightPanel === 'code'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+              </button>
+              <button
+                class="flex-1 px-4 py-2 text-xs font-medium transition-colors relative"
+                :class="rightPanel === 'graph' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+                @click="rightPanel = 'graph'"
+              >
+                Architecture
+                <span v-if="rightPanel === 'graph'" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+              </button>
+            </div>
+            <!-- Panel Content -->
+            <div class="flex-1 overflow-hidden">
+              <CodeViewer v-if="rightPanel === 'code'" :files="currentSession.generated_code" :session-id="currentSession.session_id" />
+              <FunctionGraph
+                v-else
+                :functions="currentSession.software_detailed?.functions || []"
+                @navigate="onGraphNavigate"
+              />
+            </div>
           </div>
         </Transition>
       </div>
@@ -195,9 +224,10 @@ const boards = ref<string[]>([]);
 const loading = ref(false);
 const stageLoading = ref(false);
 const thinkingStage = ref(0);
+const rightPanel = ref<"code" | "graph">("code");
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
-const { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, getDownloadUrl, fetchBoards } = useWorkflow();
+const { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, hydrateSessions, deleteSession, getDownloadUrl, fetchBoards } = useWorkflow();
 
 const examples = [
   "LED blink on PA5 at 1Hz using TIM2",
@@ -226,6 +256,8 @@ onMounted(async () => {
   } catch {
     // Backend not reachable
   }
+  // Restore previous sessions from backend
+  await hydrateSessions();
 });
 
 async function startWorkflow() {
@@ -243,6 +275,10 @@ async function startWorkflow() {
 function startNewSession() {
   userInput.value = "";
   currentSession.value = null;
+}
+
+function onGraphNavigate(file: string, funcName: string) {
+  rightPanel.value = "code";
 }
 
 async function loadSelectedSession(sessionId: string) {

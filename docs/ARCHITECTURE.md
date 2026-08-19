@@ -90,6 +90,10 @@ Populated by vendor-specific importers:
 | `SVDParser` | CMSIS-SVD `.svd` files | All ARM vendors |
 | `CMSISPackImporter` | `.pack` ZIP archives | All ARM vendors (auto-extracts SVD) |
 | `ATDFImporter` | Microchip `.atdf` files | AVR, SAM |
+| `ILLDPinExtractor` | iLLD `*_PinMap.h` headers | Infineon AURIX (TriCore) |
+
+**Bulk Import:** `POST /api/sdk/device/import-bulk` imports up to 200 devices
+at once from a single source path. Progress streamed via activity log SSE.
 
 **Supported Plugins:**
 
@@ -104,6 +108,7 @@ Populated by vendor-specific importers:
 | `ti_simplelink` | Texas Instruments | CC26X2R1-LAUNCHXL | UART2, SPI, I2C, PWM, GPIO |
 | `microchip_harmony` | Microchip | SAM-E54-Xplained-Pro | SERCOM_USART, TCC_PWM, ADC_PLIB |
 | `silabs_gecko` | Silicon Labs | BRD4187C (EFR32MG24) | em_usart, em_timer, em_iadc, em_gpio |
+| `infineon_aurix` | Infineon (AURIX) | TC4D7 Lite Kit | IfxAsclin, IfxQspi, IfxGtm, IfxVadc, IfxMultican |
 
 **Auto-Discovery** (`core/auto_discovery.py`): Detects installed SDKs and
 toolchains by scanning known paths and environment variables. Returns

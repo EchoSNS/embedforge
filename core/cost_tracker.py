@@ -9,15 +9,22 @@ falling back to the built-in pricing table for cost estimation.
 from __future__ import annotations
 
 import json
+import logging
 import os
+import sqlite3
 import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.outputs import LLMResult
+
+logger = logging.getLogger(__name__)
+
+_COST_DB_PATH = Path(__file__).resolve().parent.parent / "cost_data.db"
 
 
 # Pricing per 1M tokens (input/output) — update as models change
@@ -104,7 +111,8 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 
 
 class CostTracker:
-    """Thread-safe singleton that accumulates LLM cost data across all sessions."""
+    """Thread-safe singleton that accumulates LLM cost data across all sessions.
+    Persists to SQLite so cost history survives server restarts."""
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -112,6 +120,86 @@ class CostTracker:
         self._sessions: Dict[str, SessionCostSummary] = {}
         self._budget_usd: Optional[float] = _parse_budget()
         self._budget_callbacks: List[Any] = []
+        self._conn: Optional[sqlite3.Connection] = None
+        self._init_db()
+        self._load_from_db()
+
+    def _init_db(self) -> None:
+        try:
+            self._conn = sqlite3.connect(str(_COST_DB_PATH), check_same_thread=False)
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS llm_calls (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    session_id TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    model TEXT NOT NULL,
+                    input_tokens INTEGER NOT NULL,
+                    output_tokens INTEGER NOT NULL,
+                    cost_usd REAL NOT NULL,
+                    duration_ms REAL NOT NULL
+                )
+            """)
+            self._conn.execute("""
+                CREATE TABLE IF NOT EXISTS config (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+            """)
+            self._conn.commit()
+            # Restore budget from DB
+            row = self._conn.execute("SELECT value FROM config WHERE key='budget_usd'").fetchone()
+            if row and self._budget_usd is None:
+                try:
+                    self._budget_usd = float(row[0])
+                except ValueError:
+                    pass
+            logger.info("Cost tracker DB initialized: %s", _COST_DB_PATH)
+        except Exception as e:
+            logger.warning("Cost tracker DB init failed, running in-memory only: %s", e)
+            self._conn = None
+
+    def _load_from_db(self) -> None:
+        if not self._conn:
+            return
+        try:
+            rows = self._conn.execute(
+                "SELECT timestamp, session_id, stage, model, input_tokens, output_tokens, cost_usd, duration_ms FROM llm_calls ORDER BY timestamp"
+            ).fetchall()
+            for r in rows:
+                record = LLMCallRecord(
+                    timestamp=r[0], session_id=r[1], stage=r[2], model=r[3],
+                    input_tokens=r[4], output_tokens=r[5],
+                    total_tokens=r[4] + r[5], cost_usd=r[6], duration_ms=r[7],
+                )
+                self._records.append(record)
+                summary = self._sessions.setdefault(r[1], SessionCostSummary(session_id=r[1]))
+                summary.total_input_tokens += r[4]
+                summary.total_output_tokens += r[5]
+                summary.total_cost_usd += r[6]
+                summary.call_count += 1
+                stage_data = summary.by_stage[r[2]]
+                stage_data["input_tokens"] += r[4]
+                stage_data["output_tokens"] += r[5]
+                stage_data["cost_usd"] += r[6]
+                stage_data["calls"] += 1
+            if rows:
+                logger.info("Loaded %d historical cost records from DB", len(rows))
+        except Exception as e:
+            logger.warning("Failed to load cost history: %s", e)
+
+    def _persist_record(self, record: LLMCallRecord) -> None:
+        if not self._conn:
+            return
+        try:
+            self._conn.execute(
+                "INSERT INTO llm_calls (timestamp, session_id, stage, model, input_tokens, output_tokens, cost_usd, duration_ms) VALUES (?,?,?,?,?,?,?,?)",
+                (record.timestamp, record.session_id, record.stage, record.model,
+                 record.input_tokens, record.output_tokens, record.cost_usd, record.duration_ms),
+            )
+            self._conn.commit()
+        except Exception:
+            pass
 
     def on_budget_exceeded(self, callback) -> None:
         self._budget_callbacks.append(callback)
@@ -123,6 +211,15 @@ class CostTracker:
     @budget_usd.setter
     def budget_usd(self, value: Optional[float]) -> None:
         self._budget_usd = value
+        if self._conn:
+            try:
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO config (key, value) VALUES ('budget_usd', ?)",
+                    (str(value) if value is not None else "",)
+                )
+                self._conn.commit()
+            except Exception:
+                pass
 
     def record_call(
         self,
@@ -170,6 +267,7 @@ class CostTracker:
                         except Exception:
                             pass
 
+        self._persist_record(record)
         return record
 
     def get_session_summary(self, session_id: str) -> Optional[Dict[str, Any]]:

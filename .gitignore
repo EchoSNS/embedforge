@@ -30,6 +30,9 @@ rag_data/
 
 # Session database
 sessions.db
+cost_data.db
+device_data.db
+*.db-journal
 
 # OS
 .DS_Store

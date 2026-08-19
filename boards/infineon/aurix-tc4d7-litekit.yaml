@@ -1,0 +1,11 @@
+name: AURIX-TC4D7-LiteKit
+vendor: Infineon Technologies
+family: TC4xx
+mcu: TC4D7
+clock_hz: 300000000
+plugin: infineon_aurix
+sdk_env: AURIX_SDK_PATH
+onboard:
+  led: {pin: P13.0, label: LED1, active: high}
+  button: {pin: P14.3, label: BTN, active: low}
+  vcp: {tx: P14.0, rx: P14.1, peripheral: ASCLIN0, baud: 115200}

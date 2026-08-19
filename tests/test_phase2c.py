@@ -1,15 +1,24 @@
 """Tests for Phase 2C features: metrics, budget, caching, prompt guard, model-per-stage."""
 
 import os
+import tempfile
 import time
+from pathlib import Path
 
 import pytest
 
 
-def test_time_series_bucketing():
+def _fresh_tracker():
+    """Create a CostTracker with an isolated temp DB."""
+    import core.cost_tracker as ct
+    # Point to a temp file so tests don't load production data
+    ct._COST_DB_PATH = Path(tempfile.mktemp(suffix=".db"))
     from core.cost_tracker import CostTracker
+    return CostTracker()
 
-    tracker = CostTracker()
+
+def test_time_series_bucketing():
+    tracker = _fresh_tracker()
     now = time.time()
 
     for i in range(5):
@@ -31,9 +40,7 @@ def test_time_series_bucketing():
 
 
 def test_stage_totals():
-    from core.cost_tracker import CostTracker
-
-    tracker = CostTracker()
+    tracker = _fresh_tracker()
     tracker.record_call("s1", "refiner", "gpt-4o", 500, 200, 800.0)
     tracker.record_call("s1", "codegen", "gpt-4o", 2000, 800, 3000.0)
     tracker.record_call("s1", "refiner", "gpt-4o", 600, 250, 900.0)
@@ -46,9 +53,7 @@ def test_stage_totals():
 
 
 def test_budget_status():
-    from core.cost_tracker import CostTracker
-
-    tracker = CostTracker()
+    tracker = _fresh_tracker()
     tracker.budget_usd = 0.01
     tracker.record_call("b1", "refiner", "gpt-4o", 5000, 2000, 1000.0)
 
