@@ -84,21 +84,16 @@ class ILLDPinExtractor(DeviceDataImporter):
 
     def list_available_devices(self, path: str) -> List[str]:
         p = Path(path)
-        # iLLD is typically one device family per SDK install
-        # Try to detect from path or Sfr directory
         devices = set()
-        for sfr_dir in p.rglob("Sfr"):
-            if sfr_dir.is_dir():
-                for reg_h in sfr_dir.glob("IfxSrc_reg.h"):
-                    # Often the device name is in the path
-                    parts = str(sfr_dir).upper()
-                    for tc in ("TC37", "TC38", "TC39", "TC49", "TC4D"):
-                        if tc in parts:
-                            devices.add(tc + "x")
-        # Fallback: check directory names
-        for d in p.iterdir():
-            if d.is_dir() and d.name.upper().startswith("TC"):
+        # Search for TC* directories recursively (e.g., iLLD/TC4DA/Tricore)
+        for d in p.rglob("*"):
+            if d.is_dir() and re.match(r"TC\d+\w*", d.name, re.IGNORECASE):
                 devices.add(d.name)
+        # Also check path components for TC device family hints
+        for part in p.parts:
+            m = re.match(r"(TC\d+\w*)", part, re.IGNORECASE)
+            if m:
+                devices.add(m.group(1))
         return sorted(devices) if devices else ["AURIX_Device"]
 
     def import_device(self, path: str, device_name: str = "") -> Optional[DeviceInfo]:

@@ -188,7 +188,7 @@ class DeviceDB:
         """List all imported devices."""
         conn = self._get_conn()
         rows = conn.execute(
-            "SELECT vendor, family, device, package, core, source_format FROM devices ORDER BY vendor, family, device"
+            "SELECT vendor, family, device, package, core, source_format, source_file FROM devices ORDER BY vendor, family, device"
         ).fetchall()
         return [dict(r) for r in rows]
 

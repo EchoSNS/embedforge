@@ -278,6 +278,7 @@
             <Transition name="fade-slide">
               <div v-if="deviceImportResult && deviceImportResult.pin_mux_count > 0" class="rounded-lg border p-3 space-y-3">
                 <p class="text-xs font-medium">Generate Board Config</p>
+                <p class="text-[10px] text-muted-foreground">Fill in onboard resources (LED, button, VCP) to create a board YAML. Check your board's schematic for these pin assignments.</p>
                 <div class="grid grid-cols-2 gap-2">
                   <div class="space-y-1">
                     <label class="text-[10px] text-muted-foreground">Board Name</label>
@@ -874,7 +875,7 @@ async function bulkImportAll() {
   deviceImporting.value = true;
   bulkProgress.value = `Starting import of ${count} devices…`;
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/import-bulk`, {
+    const res = await fetch(`${apiBase}/api/sdk/device/import-bulk`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: devicePath.value, devices: [] }),
@@ -902,6 +903,10 @@ async function importDevice(deviceName: string = "") {
     });
     deviceImportResult.value = await res.json();
     await refreshImportedDevices();
+    // Auto-fill board config name from imported device
+    if (deviceImportResult.value?.device) {
+      boardGenName.value = deviceImportResult.value.device;
+    }
   } catch { /* ignore */ }
   deviceImporting.value = false;
 }
@@ -941,7 +946,7 @@ async function generateBoard() {
   const devName = deviceImportResult.value?.device;
   if (!devName) return;
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(devName)}/generate-board`, {
+    const res = await fetch(`${apiBase}/api/sdk/device/${encodeURIComponent(devName)}/generate-board`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -967,7 +972,7 @@ function toggleDeviceExpand(device: string) {
 
 async function viewDevicePins(device: string) {
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(device)}/pins?peripheral_type=`);
+    const res = await fetch(`${apiBase}/api/sdk/device/${encodeURIComponent(device)}/pins?peripheral_type=`);
     const data = await res.json();
     devicePinsPreview.value = data.pins || [];
     devicePinsDevice.value = device;
@@ -976,7 +981,7 @@ async function viewDevicePins(device: string) {
 
 async function deleteImportedDevice(device: string) {
   try {
-    await fetch(`${deviceApiBase}/api/sdk/device/${encodeURIComponent(device)}`, { method: "DELETE" });
+    await fetch(`${apiBase}/api/sdk/device/${encodeURIComponent(device)}`, { method: "DELETE" });
     await refreshImportedDevices();
   } catch { /* ignore */ }
 }
