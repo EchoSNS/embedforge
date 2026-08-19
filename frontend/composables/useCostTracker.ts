@@ -68,6 +68,14 @@ export interface BudgetStatus {
   exceeded: boolean;
 }
 
+export interface CacheStats {
+  size: number;
+  max_size: number;
+  hits: number;
+  misses: number;
+  hit_rate: number;
+}
+
 export interface MetricsData {
   time_series: TimeBucket[];
   stage_totals: StageTotal[];
@@ -82,6 +90,7 @@ export function useCostTracker(sessionId?: string) {
   const sessionCost = ref<SessionCost | null>(null);
   const recentCalls = ref<RecentCall[]>([]);
   const metrics = ref<MetricsData | null>(null);
+  const cacheStats = ref<CacheStats | null>(null);
   const loading = ref(false);
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -128,9 +137,23 @@ export function useCostTracker(sessionId?: string) {
     } catch {}
   }
 
+  async function fetchCacheStats() {
+    try {
+      const res = await fetch(`${apiBase}/api/cost/cache`);
+      if (res.ok) cacheStats.value = await res.json();
+    } catch {}
+  }
+
+  async function clearCache() {
+    try {
+      await fetch(`${apiBase}/api/cost/cache`, { method: "DELETE" });
+      await fetchCacheStats();
+    } catch {}
+  }
+
   async function refresh() {
     loading.value = true;
-    await Promise.all([fetchGlobal(), fetchSession(), fetchRecent(), fetchMetrics()]);
+    await Promise.all([fetchGlobal(), fetchSession(), fetchRecent(), fetchMetrics(), fetchCacheStats()]);
     loading.value = false;
   }
 
@@ -154,9 +177,11 @@ export function useCostTracker(sessionId?: string) {
     sessionCost,
     recentCalls,
     metrics,
+    cacheStats,
     loading,
     refresh,
     setBudget,
+    clearCache,
     startPolling,
     stopPolling,
   };

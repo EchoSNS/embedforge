@@ -211,6 +211,44 @@
           </div>
           <div v-else class="py-6 text-center text-xs text-muted-foreground">No calls recorded</div>
         </div>
+
+        <!-- LLM Cache Stats -->
+        <div class="rounded-xl border bg-card p-4">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <div class="text-xs font-medium">Response Cache</div>
+              <div class="text-[10px] text-muted-foreground">Identical prompts served from cache to save cost</div>
+            </div>
+            <button
+              class="flex items-center gap-1 rounded-lg border px-2.5 py-1 text-[10px] hover:bg-accent transition-colors"
+              @click="clearCache"
+            >
+              <Trash2 class="h-3 w-3" />
+              Clear
+            </button>
+          </div>
+          <div v-if="cacheStats" class="grid grid-cols-4 gap-3">
+            <div class="rounded-lg bg-accent/50 px-2.5 py-2 text-center">
+              <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Entries</div>
+              <div class="text-sm font-semibold">{{ cacheStats.size }} / {{ cacheStats.max_size }}</div>
+            </div>
+            <div class="rounded-lg bg-accent/50 px-2.5 py-2 text-center">
+              <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Hit Rate</div>
+              <div class="text-sm font-semibold" :class="cacheStats.hit_rate > 0.3 ? 'text-emerald-400' : ''">
+                {{ (cacheStats.hit_rate * 100).toFixed(1) }}%
+              </div>
+            </div>
+            <div class="rounded-lg bg-accent/50 px-2.5 py-2 text-center">
+              <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Hits</div>
+              <div class="text-sm font-semibold text-emerald-400">{{ cacheStats.hits }}</div>
+            </div>
+            <div class="rounded-lg bg-accent/50 px-2.5 py-2 text-center">
+              <div class="text-[10px] text-muted-foreground uppercase tracking-wide">Misses</div>
+              <div class="text-sm font-semibold">{{ cacheStats.misses }}</div>
+            </div>
+          </div>
+          <div v-else class="py-4 text-center text-xs text-muted-foreground">Cache stats unavailable</div>
+        </div>
       </div>
     </div>
   </div>
@@ -218,13 +256,13 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { ArrowLeft, RefreshCw, AlertTriangle, Settings } from "@lucide/vue";
+import { ArrowLeft, RefreshCw, AlertTriangle, Settings, Trash2 } from "@lucide/vue";
 import { useCostTracker, type TimeBucket, type StageTotal } from "~/composables/useCostTracker";
 
 const bucketMinutes = ref(60);
 const budgetInput = ref<number | undefined>(undefined);
 
-const { globalSummary, recentCalls, metrics, loading, refresh, setBudget } = useCostTracker();
+const { globalSummary, recentCalls, metrics, cacheStats, loading, refresh, setBudget, clearCache } = useCostTracker();
 
 const timeSeries = computed<TimeBucket[]>(() => metrics.value?.time_series ?? []);
 const stageTotals = computed<StageTotal[]>(() =>

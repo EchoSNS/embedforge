@@ -67,8 +67,15 @@
       </div>
     </div>
 
-    <!-- Settings link -->
-    <div class="border-t p-3">
+    <!-- Settings & Metrics links -->
+    <div class="border-t p-3 space-y-1">
+      <NuxtLink
+        to="/metrics"
+        class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
+      >
+        <BarChart3 class="h-3.5 w-3.5" />
+        Metrics & Cost
+      </NuxtLink>
       <NuxtLink
         to="/settings"
         class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-all duration-200"
@@ -82,7 +89,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { Plus, ChevronRight, ChevronDown, CircuitBoard, Cpu, Settings } from "@lucide/vue";
+import { Plus, ChevronRight, ChevronDown, CircuitBoard, Cpu, Settings, BarChart3 } from "@lucide/vue";
 
 defineProps<{
   boards: string[];
