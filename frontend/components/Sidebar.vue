@@ -19,6 +19,7 @@
           v-for="session in sessions"
           :key="session"
           class="rounded-lg bg-secondary/50 p-2.5 text-xs border border-transparent hover:border-primary/20 transition-all duration-200 cursor-pointer hover:bg-accent group"
+          @click="$emit('select-session', session)"
         >
           <div class="flex items-center gap-2">
             <span class="h-1.5 w-1.5 rounded-full bg-[hsl(var(--success))]" />
@@ -91,6 +92,7 @@ defineProps<{
 
 const emit = defineEmits<{
   "select-board": [board: string];
+  "select-session": [sessionId: string];
   "new-session": [];
 }>();
 

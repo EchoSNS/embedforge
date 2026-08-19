@@ -57,10 +57,12 @@ class CompilerFixLoop:
         self,
         registry: PluginRegistry,
         max_iterations: int = 5,
+        session_id: str = "",
     ) -> None:
         self._registry = registry
         self._compiler = CompilerService(registry)
         self._max_iterations = max_iterations
+        self._session_id = session_id
 
     def run(
         self,
@@ -170,7 +172,7 @@ class CompilerFixLoop:
 
         # Decrease temperature on later iterations for more conservative fixes
         temp = max(0.0, 0.3 - (iteration * 0.05))
-        llm = get_llm()
+        llm = get_llm(session_id=self._session_id, stage="fix_loop")
 
         try:
             response = llm.invoke([

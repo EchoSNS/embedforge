@@ -1,8 +1,9 @@
 /**
  * Workflow API composable — manages session state and API calls.
+ * Uses useState for cross-page persistence within the SPA.
  */
 
-import { ref } from "vue";
+import { useState } from "#app";
 import { useRuntimeConfig } from "#app";
 
 export interface WorkflowState {
@@ -24,7 +25,9 @@ export interface WorkflowState {
 export function useWorkflow() {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
-  const currentSession = ref<WorkflowState | null>(null);
+  // useState persists across client-side page navigations
+  const currentSession = useState<WorkflowState | null>("workflow-session", () => null);
+  const sessionList = useState<string[]>("workflow-sessions", () => []);
 
   async function fetchBoards() {
     const res = await fetch(`${apiBase}/api/plugins/boards`);
@@ -40,6 +43,15 @@ export function useWorkflow() {
     const data = await res.json();
 
     const stateRes = await fetch(`${apiBase}/api/workflow/${data.session_id}/state`);
+    currentSession.value = await stateRes.json();
+    if (currentSession.value && !sessionList.value.includes(currentSession.value.session_id)) {
+      sessionList.value.push(currentSession.value.session_id);
+    }
+  }
+
+  async function loadSession(sessionId: string) {
+    const stateRes = await fetch(`${apiBase}/api/workflow/${sessionId}/state`);
+    if (!stateRes.ok) return;
     currentSession.value = await stateRes.json();
   }
 
@@ -93,5 +105,15 @@ export function useWorkflow() {
     return `${apiBase}/api/workflow/${currentSession.value.session_id}/download`;
   }
 
-  return { currentSession, startSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards };
+  function getStageDownloadUrl(stage: string) {
+    if (!currentSession.value) return "";
+    return `${apiBase}/api/workflow/${currentSession.value.session_id}/download/stage/${stage}`;
+  }
+
+  function getFullPackageDownloadUrl() {
+    if (!currentSession.value) return "";
+    return `${apiBase}/api/workflow/${currentSession.value.session_id}/download/full`;
+  }
+
+  return { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, getDownloadUrl, getStageDownloadUrl, getFullPackageDownloadUrl, fetchBoards };
 }

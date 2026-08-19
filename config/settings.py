@@ -20,6 +20,9 @@ class AppSettings:
     log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
     max_fix_iterations: int = 5
     enable_rag: bool = field(default_factory=lambda: os.getenv("EMBEDFORGE_ENABLE_RAG", "false").lower() == "true")
+    allowed_sdk_roots: list = field(default_factory=lambda: [
+        p.strip() for p in os.getenv("EMBEDFORGE_SDK_ROOTS", "").split(";") if p.strip()
+    ])
 
     @property
     def plugins_dir(self) -> Path:

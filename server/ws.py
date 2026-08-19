@@ -60,7 +60,7 @@ async def _handle_chat(session_id: str, message: str, websocket: WebSocket) -> N
             f"Session context:\n{context}"
         )
 
-        llm = get_llm()
+        llm = get_llm(session_id=session_id, stage="chat")
         response = llm.invoke([
             SystemMessage(content=system),
             HumanMessage(content=message),

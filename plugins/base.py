@@ -222,6 +222,36 @@ class PinCapabilityProvider(ABC):
         """Return regex patterns for recognizable pin symbols in generated code."""
 
 
+class DeviceDataImporter(ABC):
+    """
+    Imports hardware data from vendor-specific sources into a DeviceInfo model.
+
+    Each vendor ecosystem provides its own importer:
+      - STM32: CubeMX XML database
+      - NXP: MCUXpresso signal configuration
+      - Nordic: Zephyr devicetree
+      - Microchip: ATDF files
+      - Generic ARM: CMSIS-SVD files
+    """
+
+    @abstractmethod
+    def can_import(self, path: str) -> bool:
+        """Return True if this importer can handle the given file/directory."""
+
+    @abstractmethod
+    def import_device(self, path: str, device_name: str = "") -> Any:
+        """Import device data. Returns a DeviceInfo instance."""
+
+    @abstractmethod
+    def list_available_devices(self, path: str) -> List[str]:
+        """List device names available at the given path."""
+
+    @property
+    @abstractmethod
+    def source_format(self) -> str:
+        """Identifier for this importer's format (e.g. 'cubemx', 'svd', 'atdf')."""
+
+
 class CompilerBackend(ABC):
     """
     Abstraction over a cross-compiler toolchain.

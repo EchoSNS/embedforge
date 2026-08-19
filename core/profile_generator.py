@@ -99,7 +99,7 @@ class ProfileGenerator:
             "Generate the capability profile JSON."
         )
 
-        llm = get_llm()
+        llm = get_llm(session_id="system", stage="profile_generation")
         response = llm.invoke([
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt),

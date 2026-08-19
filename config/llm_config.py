@@ -2,6 +2,7 @@
 LLM Configuration — multi-provider support (OpenAI, Azure, Anthropic).
 
 Single Responsibility: manages LLM client instantiation from environment config.
+Auto-attaches cost tracking callbacks when session/stage context is provided.
 """
 
 from __future__ import annotations
@@ -9,7 +10,7 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,17 @@ class LLMSettings:
         return bool(self.api_key and self.model)
 
 
-def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = None):
+def get_llm(
+    temperature: float | None = None,
+    settings: Optional[LLMSettings] = None,
+    session_id: str = "",
+    stage: str = "",
+):
     """
     Factory that returns a LangChain chat model for the configured provider.
+
+    When session_id/stage are provided, auto-attaches a CostTrackingCallback
+    so every invocation is automatically metered.
 
     Raises:
         ValueError: if settings are invalid or provider unsupported.
@@ -87,6 +96,11 @@ def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = 
             "Check your environment variables."
         )
 
+    callbacks: List[Any] = []
+    if session_id or stage:
+        from core.cost_tracker import CostTrackingCallback
+        callbacks.append(CostTrackingCallback(session_id=session_id or "unknown", stage=stage or "unknown"))
+
     if settings.provider == "azure":
         from langchain_openai import AzureChatOpenAI
 
@@ -98,6 +112,8 @@ def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = 
         }
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if callbacks:
+            kwargs["callbacks"] = callbacks
 
         return AzureChatOpenAI(**kwargs)
     elif settings.provider == "anthropic":
@@ -106,6 +122,8 @@ def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = 
         kwargs = {"model": settings.model, "api_key": settings.api_key}
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if callbacks:
+            kwargs["callbacks"] = callbacks
         return ChatAnthropic(**kwargs)
     else:
         from langchain_openai import ChatOpenAI
@@ -113,4 +131,6 @@ def get_llm(temperature: float | None = None, settings: Optional[LLMSettings] = 
         kwargs = {"model": settings.model, "api_key": settings.api_key}
         if temperature is not None:
             kwargs["temperature"] = temperature
+        if callbacks:
+            kwargs["callbacks"] = callbacks
         return ChatOpenAI(**kwargs)

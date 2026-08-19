@@ -4,9 +4,10 @@
     <Sidebar
       :boards="boards"
       :active-board="activeBoard"
-      :sessions="sessions"
+      :sessions="sessionList"
       @select-board="activeBoard = $event"
       @new-session="startNewSession"
+      @select-session="loadSelectedSession"
     />
 
     <!-- Main Content -->
@@ -160,15 +161,16 @@
           </div>
 
           <!-- Activity Log (visible when session active or loading) -->
-          <div v-if="currentSession || loading" class="mt-4">
+          <div v-if="currentSession || loading" class="mt-4 space-y-4">
             <ActivityLog />
+            <CostTracker :session-id="currentSession?.session_id" />
           </div>
         </div>
 
         <!-- Code Viewer Panel -->
         <Transition name="slide-in-right">
           <div v-if="currentSession?.generated_code && Object.keys(currentSession.generated_code).length" class="w-[40%] overflow-hidden">
-            <CodeViewer :files="currentSession.generated_code" />
+            <CodeViewer :files="currentSession.generated_code" :session-id="currentSession.session_id" />
           </div>
         </Transition>
       </div>
@@ -190,13 +192,12 @@ const toggleTheme = inject<() => void>("toggleDark")!;
 const userInput = ref("");
 const activeBoard = ref("");
 const boards = ref<string[]>([]);
-const sessions = ref<string[]>([]);
 const loading = ref(false);
 const stageLoading = ref(false);
 const thinkingStage = ref(0);
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
-const { currentSession, startSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards } = useWorkflow();
+const { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards } = useWorkflow();
 
 const examples = [
   "LED blink on PA5 at 1Hz using TIM2",
@@ -233,9 +234,6 @@ async function startWorkflow() {
   startThinkingAnimation();
   try {
     await startSession(userInput.value, activeBoard.value);
-    if (currentSession.value) {
-      sessions.value.push(currentSession.value.session_id);
-    }
   } finally {
     loading.value = false;
     stopThinkingAnimation();
@@ -245,6 +243,15 @@ async function startWorkflow() {
 function startNewSession() {
   userInput.value = "";
   currentSession.value = null;
+}
+
+async function loadSelectedSession(sessionId: string) {
+  loading.value = true;
+  try {
+    await loadSession(sessionId);
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function approveStage(stage: string) {

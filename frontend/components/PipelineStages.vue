@@ -66,7 +66,7 @@
                 />
                 <div class="flex gap-2">
                   <button
-                    v-if="stage.key !== 'build'"
+                    v-if="stage.key !== 'build' && stage.key !== 'review'"
                     class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
                     :disabled="loading"
                     @click="$emit('approve', nextStageKey)"
@@ -75,13 +75,20 @@
                     Approve & Continue
                   </button>
                   <button
-                    v-if="stage.key !== 'build'"
+                    v-if="stage.key !== 'build' && stage.key !== 'review'"
                     class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98] disabled:opacity-50"
                     :disabled="loading"
                     @click="saveEdit"
                   >
                     <Save class="h-3.5 w-3.5" />
                     Save Edit
+                  </button>
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98]"
+                    @click="downloadStage(stage.dataKey)"
+                  >
+                    <Download class="h-3.5 w-3.5" />
+                    Download
                   </button>
                 </div>
 
@@ -119,6 +126,13 @@
             <Transition name="fade-slide">
               <div v-if="idx < activeIndex && stage.dataKey" class="mt-3">
                 <pre class="max-h-20 overflow-hidden rounded-lg bg-secondary/50 p-2.5 text-xs text-muted-foreground font-mono">{{ JSON.stringify(state[stage.dataKey], null, 2)?.slice(0, 200) }}...</pre>
+                <button
+                  class="inline-flex items-center gap-1.5 mt-2 rounded-lg border px-3 py-1.5 text-xs hover:bg-accent transition-all duration-200 active:scale-[0.98]"
+                  @click="downloadStage(stage.dataKey)"
+                >
+                  <Download class="h-3 w-3" />
+                  Download
+                </button>
               </div>
             </Transition>
 
@@ -146,12 +160,28 @@
         </TransitionGroup>
       </div>
     </div>
+
+    <!-- Full Package Download -->
+    <div v-if="activeIndex > 0" class="pt-4 border-t">
+      <button
+        class="inline-flex items-center gap-2 rounded-lg bg-secondary px-4 py-2.5 text-sm font-medium hover:bg-accent transition-all duration-200 active:scale-[0.98]"
+        @click="downloadFullPackage"
+      >
+        <Package class="h-4 w-4" />
+        Download Full Package
+      </button>
+      <p class="text-xs text-muted-foreground mt-1.5">Includes all stage data, generated code, and logs</p>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
-import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck, Hammer, FlaskConical, Zap, AlertCircle, RotateCcw } from "@lucide/vue";
+import { useRuntimeConfig } from "#app";
+import { Check, CheckCircle2, Save, Loader2, FileText, Cpu, Layers, Code2, Braces, ShieldCheck, Hammer, FlaskConical, Zap, AlertCircle, RotateCcw, Download, Package } from "@lucide/vue";
+
+const config = useRuntimeConfig();
+const apiBase = config.public.apiBase as string;
 
 const props = defineProps<{
   state: any;
@@ -167,6 +197,30 @@ const emit = defineEmits<{
   retry: [stage: string];
 }>();
 
+function getStageDownloadUrl(stage: string) {
+  const sid = props.state?.session_id;
+  if (!sid) return "#";
+  return `${apiBase}/api/workflow/${sid}/download/stage/${stage}`;
+}
+
+function getFullPackageDownloadUrl() {
+  const sid = props.state?.session_id;
+  if (!sid) return "#";
+  return `${apiBase}/api/workflow/${sid}/download/full`;
+}
+
+function downloadStage(stage: string) {
+  const url = getStageDownloadUrl(stage);
+  if (url === "#") return;
+  window.open(url, "_blank");
+}
+
+function downloadFullPackage() {
+  const url = getFullPackageDownloadUrl();
+  if (url === "#") return;
+  window.open(url, "_blank");
+}
+
 const stages = [
   { key: "requirements", label: "Requirements", description: "Review the AI-refined requirements before proceeding", dataKey: "requirements", nextApprove: "hardware", icon: FileText },
   { key: "hardware", label: "Hardware Design", description: "Assigning peripherals, pins, and clocks", dataKey: "hardware_spec", nextApprove: "software_arch", icon: Cpu },
@@ -178,10 +232,15 @@ const stages = [
 ];
 
 const activeIndex = computed(() => {
-  // A stage is active when it has data but the next stage doesn't
   for (let i = stages.length - 1; i >= 0; i--) {
     const data = props.state?.[stages[i].dataKey];
-    if (data && Object.keys(data).length) return i;
+    if (data && Object.keys(data).length) {
+      // Auto-advance past review to build when review is done with no errors
+      if (stages[i].key === "review" && !props.state?.errors?.length) {
+        return Math.min(i + 1, stages.length - 1);
+      }
+      return i;
+    }
   }
   return 0;
 });

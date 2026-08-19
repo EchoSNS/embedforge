@@ -109,7 +109,19 @@ def _refs_dir_for(profile_name: str) -> Path:
 @router.post("/scan")
 async def scan_sdk(req: SdkScanRequest):
     """Scan SDK headers at the given path and return extracted metadata."""
-    sdk_path = Path(req.path)
+    from config.settings import AppSettings
+    settings = AppSettings()
+
+    sdk_path = Path(req.path).resolve()
+
+    if settings.allowed_sdk_roots:
+        allowed = any(
+            sdk_path == Path(root).resolve() or Path(root).resolve() in sdk_path.parents
+            for root in settings.allowed_sdk_roots
+        )
+        if not allowed:
+            raise HTTPException(403, "Path is outside allowed SDK directories. Configure EMBEDFORGE_SDK_ROOTS.")
+
     log.step("SDK Scan started", f"Path: {req.path}")
 
     if not sdk_path.exists():
@@ -470,6 +482,177 @@ async def delete_profile_reference(profile_name: str, filename: str):
     filepath.unlink()
     log.info(f"Deleted reference {filename} from profile {profile_name}")
     return {"status": "deleted"}
+
+
+# ─── Device Data Import ─────────────────────────────────────────────────────
+
+
+class DeviceImportRequest(BaseModel):
+    path: str
+    device_name: str = ""
+
+
+@router.post("/device/import")
+async def import_device_data(req: DeviceImportRequest):
+    """Import device hardware data (pin-mux, peripherals, registers) from vendor tools."""
+    from core.device_db import get_device_db
+    from core.importers.cubemx_importer import CubeMXImporter
+    from core.importers.svd_parser import SVDParser
+    from core.importers.cmsis_pack_importer import CMSISPackImporter
+    from core.importers.atdf_importer import ATDFImporter
+
+    importers = [CubeMXImporter(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
+
+    # Find a compatible importer
+    importer = None
+    for imp in importers:
+        if imp.can_import(req.path):
+            importer = imp
+            break
+
+    if importer is None:
+        raise HTTPException(400, "No compatible importer found. Supported: CubeMX XML, SVD, CMSIS-Pack (.pack), Microchip ATDF.")
+
+    log.step("Importing device data…", f"Source: {req.path}")
+
+    info = importer.import_device(req.path, req.device_name)
+    if info is None:
+        raise HTTPException(500, "Failed to parse device data from the given path.")
+
+    db = get_device_db()
+    device_id = db.import_device(info)
+
+    log.success(
+        f"Imported {info.device} ({info.package})",
+        f"{len(info.pin_mux)} pin-mux entries, {len(info.peripherals)} peripherals"
+    )
+
+    return {
+        "device_id": device_id,
+        "device": info.device,
+        "package": info.package,
+        "pin_mux_count": len(info.pin_mux),
+        "peripheral_count": len(info.peripherals),
+        "source_format": info.source_format,
+    }
+
+
+@router.post("/device/list-available")
+async def list_importable_devices(req: DeviceImportRequest):
+    """List devices available for import at a given path."""
+    from core.importers.cubemx_importer import CubeMXImporter
+    from core.importers.svd_parser import SVDParser
+    from core.importers.cmsis_pack_importer import CMSISPackImporter
+    from core.importers.atdf_importer import ATDFImporter
+
+    importers = [CubeMXImporter(), ATDFImporter(), SVDParser(), CMSISPackImporter()]
+    for imp in importers:
+        if imp.can_import(req.path):
+            devices = imp.list_available_devices(req.path)
+            return {"format": imp.source_format, "devices": devices[:200]}
+
+    raise HTTPException(400, "No compatible importer found for the given path.")
+
+
+@router.get("/device/imported")
+async def list_imported_devices():
+    """List all devices in the local device database."""
+    from core.device_db import get_device_db
+    db = get_device_db()
+    return {"devices": db.list_devices(), "total": db.get_device_count()}
+
+
+@router.get("/device/{device_name}/pins")
+async def get_device_pins(device_name: str, peripheral_type: str = ""):
+    """Get pin-mux data for an imported device."""
+    from core.device_db import get_device_db
+    db = get_device_db()
+    device_id = db.find_device(device_name)
+    if device_id is None:
+        raise HTTPException(404, f"Device '{device_name}' not found in database")
+
+    pins = db.get_pin_mux(device_id, peripheral_type)
+    return {
+        "device": device_name,
+        "peripheral_type": peripheral_type or "all",
+        "count": len(pins),
+        "pins": [
+            {"pin": p.pin_name, "signal": p.signal, "af": p.af_number,
+             "peripheral": p.peripheral, "type": p.peripheral_type}
+            for p in pins[:500]
+        ],
+    }
+
+
+@router.get("/discover")
+async def auto_discover():
+    """Auto-detect installed SDKs, toolchains, and device data sources."""
+    from core.auto_discovery import discover_all
+    tools = discover_all()
+    return {
+        "found": len(tools),
+        "tools": [
+            {"name": t.name, "kind": t.kind, "path": t.path,
+             "vendor": t.vendor, "version": t.version, "importable": t.importable}
+            for t in tools
+        ],
+    }
+
+
+class BrowseRequest(BaseModel):
+    path: str = ""
+
+
+@router.post("/browse")
+async def browse_directory(req: BrowseRequest):
+    """Browse local filesystem for SDK/device data selection."""
+    import platform as plat
+
+    if not req.path:
+        # Return common root paths
+        if plat.system() == "Windows":
+            import string
+            drives = [f"{d}:/" for d in string.ascii_uppercase
+                      if Path(f"{d}:/").exists()]
+            return {"path": "", "entries": [
+                {"name": d, "type": "drive", "path": d} for d in drives
+            ]}
+        else:
+            return {"path": "/", "entries": [
+                {"name": d.name, "type": "directory", "path": str(d)}
+                for d in sorted(Path("/").iterdir()) if d.is_dir() and not d.name.startswith(".")
+            ][:30]}
+
+    p = Path(req.path).resolve()
+    if not p.exists():
+        raise HTTPException(404, f"Path not found: {req.path}")
+    if not p.is_dir():
+        raise HTTPException(400, "Path is not a directory")
+
+    entries = []
+    # Parent link
+    if p.parent != p:
+        entries.append({"name": "..", "type": "directory", "path": str(p.parent)})
+
+    try:
+        for child in sorted(p.iterdir(), key=lambda c: (not c.is_dir(), c.name.lower())):
+            if child.name.startswith("."):
+                continue
+            entry_type = "directory" if child.is_dir() else "file"
+            suffix = child.suffix.lower()
+            # Only show relevant file types
+            if child.is_file() and suffix not in (".xml", ".svd", ".pack", ".atdf", ".pdsc"):
+                continue
+            entries.append({
+                "name": child.name,
+                "type": entry_type,
+                "path": str(child),
+                "size": child.stat().st_size if child.is_file() else None,
+            })
+    except PermissionError:
+        raise HTTPException(403, "Permission denied")
+
+    return {"path": str(p), "entries": entries[:200]}
 
 
 # ─── Helpers ────────────────────────────────────────────────────────────────

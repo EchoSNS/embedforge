@@ -61,6 +61,58 @@ Profiles can be:
 
 The `CapabilityProfile` is injected into LLM prompts at each stage for grounded generation.
 
+## Device Data System
+
+Hardware knowledge is layered, with each layer providing different ground-truth:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: RAG (PDF datasheets)                               │
+│   Electrical constraints, timing, errata                     │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 2: Pin Mux Database (CubeMX/ATDF/PDSC)               │
+│   Complete pin-to-AF mapping per MCU package                 │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 1: SVD / Register Maps                                │
+│   Peripheral registers, bit fields, interrupts              │
+├─────────────────────────────────────────────────────────────┤
+│ Layer 0: SDK Header Scan                                    │
+│   API functions, types, constants                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Device DB** (`core/device_db.py`): SQLite-backed store for imported device data.
+Populated by vendor-specific importers:
+
+| Importer | Source | Vendor Coverage |
+|----------|--------|-----------------|
+| `CubeMXImporter` | CubeMX `db/mcu/*.xml` | STM32 (all families) |
+| `SVDParser` | CMSIS-SVD `.svd` files | All ARM vendors |
+| `CMSISPackImporter` | `.pack` ZIP archives | All ARM vendors (auto-extracts SVD) |
+| `ATDFImporter` | Microchip `.atdf` files | AVR, SAM |
+
+**Supported Plugins:**
+
+| Plugin | Vendor | Boards | Key Drivers |
+|--------|--------|--------|-------------|
+| `stm32_hal` | STMicroelectronics | NUCLEO-F446RE | HAL_UART, HAL_TIM, HAL_SPI, HAL_I2C, HAL_ADC |
+| `nxp_mcuxpresso` | NXP | LPCXpresso55S69 | fsl_usart, fsl_spi, fsl_i2c, fsl_ctimer |
+| `nordic_nrfconnect` | Nordic | nRF52840-DK | nrfx_uarte, nrfx_spim, nrfx_twim, nrfx_pwm |
+| `espressif_idf` | Espressif | ESP32-DevKitC | driver/uart, ledc, mcpwm, adc_oneshot |
+| `infineon_mtb` | Infineon | CY8CPROTO-062-4343W | cyhal_uart, cyhal_spi, cyhal_pwm, Cy_SCB |
+| `renesas_fsp` | Renesas | EK-RA6M5 | r_sci_uart, r_spi, r_gpt, r_adc |
+| `ti_simplelink` | Texas Instruments | CC26X2R1-LAUNCHXL | UART2, SPI, I2C, PWM, GPIO |
+| `microchip_harmony` | Microchip | SAM-E54-Xplained-Pro | SERCOM_USART, TCC_PWM, ADC_PLIB |
+| `silabs_gecko` | Silicon Labs | BRD4187C (EFR32MG24) | em_usart, em_timer, em_iadc, em_gpio |
+
+**Auto-Discovery** (`core/auto_discovery.py`): Detects installed SDKs and
+toolchains by scanning known paths and environment variables. Returns
+importable sources for one-click device data import.
+
+**Pin validation strategy:** Structural validation (pattern-based, e.g. `P[A-K]0-15`
+for STM32) as baseline. When device data is imported, the system uses ground-truth
+pin-AF tables. The LLM receives complete AF context in hardware-stage prompts.
+
 ## Data Flow
 
 ```mermaid
@@ -158,6 +210,20 @@ class WorkflowState:
 - `validate_pin(symbol)` → True/False
 - `validate_assignment(assignments)` → error list
 - `get_pin_patterns()` → regex patterns for code scanning
+
+**Pin validation strategy:** Rather than maintaining an exhaustive per-MCU pin
+database (unmaintainable across thousands of MCU variants), the system uses
+structural validation: any symbol matching the vendor's naming pattern
+(e.g., `P[A-K]0-15` for STM32) passes validation. The LLM is guided toward
+correct pin choices by the capability profile and board context injected into
+prompts. The pin provider can dynamically enrich its knowledge by parsing
+SDK headers (GPIO AF definitions) when an SDK path is configured.
+
+**Hardware knowledge layers:**
+1. SDK headers → API functions, register defines, AF constants (automated)
+2. Capability profile → peripheral instances, features, constraints (SDK scan + LLM)
+3. Board context → onboard resources, VCP pins, LEDs (minimal bootstrap)
+4. Datasheet/RM knowledge → injected via RAG or reference projects (optional)
 
 ### CompilerBackend
 - `is_available()` → toolchain installed?

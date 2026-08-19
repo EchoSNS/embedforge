@@ -58,8 +58,9 @@ class AIReviewer:
     Uses architecture rules and requirements context to evaluate output quality.
     """
 
-    def __init__(self, registry: PluginRegistry) -> None:
+    def __init__(self, registry: PluginRegistry, session_id: str = "") -> None:
         self._registry = registry
+        self._session_id = session_id
 
     def review(
         self,
@@ -91,7 +92,7 @@ class AIReviewer:
             f"Review this code."
         )
 
-        llm = get_llm()
+        llm = get_llm(session_id=self._session_id, stage="review")
 
         try:
             response = llm.invoke([

@@ -40,17 +40,19 @@ class PinValidator:
 
     def validate_code(self, code: str) -> PinValidationResult:
         """
-        Scan code for pin symbols and validate each against the MCU pin map.
-
-        Returns structured result with valid/invalid lists.
+        Scan code for physical GPIO pin symbols (e.g., PA5, PB10) and validate
+        each against the MCU pin map. Only the 'gpio' pattern is used for
+        validation — peripheral function names like USART2_TX are not physical pins.
         """
         provider = self._registry.get_pin_provider()
         patterns = provider.get_pin_patterns()
         result = PinValidationResult()
 
         found_symbols: Set[str] = set()
-        for pattern_name, pattern in patterns.items():
-            for match in re.finditer(pattern, code):
+        # Only validate physical pin symbols, not peripheral function names
+        gpio_pattern = patterns.get("gpio")
+        if gpio_pattern:
+            for match in re.finditer(gpio_pattern, code):
                 found_symbols.add(match.group(0))
 
         for symbol in sorted(found_symbols):

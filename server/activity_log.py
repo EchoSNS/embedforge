@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -49,15 +50,17 @@ class ActivityLog:
     def __init__(self) -> None:
         self._buffer: deque[LogEntry] = deque(maxlen=_MAX_BUFFER)
         self._subscribers: list[asyncio.Queue] = []
+        self._lock = threading.Lock()
 
     def emit(self, level: LogLevel, message: str, detail: str = "") -> None:
         entry = LogEntry(level=level, message=message, detail=detail)
-        self._buffer.append(entry)
-        for q in self._subscribers:
-            try:
-                q.put_nowait(entry)
-            except asyncio.QueueFull:
-                pass
+        with self._lock:
+            self._buffer.append(entry)
+            for q in self._subscribers:
+                try:
+                    q.put_nowait(entry)
+                except (asyncio.QueueFull, RuntimeError):
+                    pass
 
     def info(self, message: str, detail: str = "") -> None:
         self.emit(LogLevel.INFO, message, detail)
@@ -80,6 +83,10 @@ class ActivityLog:
     def get_recent(self, count: int = 50) -> list[Dict[str, Any]]:
         entries = list(self._buffer)[-count:]
         return [e.to_dict() for e in entries]
+
+    def get_buffer(self) -> list[LogEntry]:
+        """Return all buffered log entries."""
+        return list(self._buffer)
 
     async def subscribe(self) -> AsyncGenerator[str, None]:
         """Yield SSE-formatted log entries as they arrive."""

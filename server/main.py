@@ -56,6 +56,10 @@ def _load_plugins(settings: AppSettings) -> PluginRegistry:
 async def lifespan(app: FastAPI):
     global _registry
     settings = AppSettings()
+
+    from config.logging_config import configure_logging
+    configure_logging(level=settings.log_level)
+
     _registry = _load_plugins(settings)
     logger.info(f"EmbedForge started — plugin: {_registry.active.name if _registry.active else 'none'}")
     yield
@@ -77,7 +81,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from server.routes import plugins, workflow, sdk, flash  # noqa: E402
+from server.routes import plugins, workflow, sdk, flash, cost  # noqa: E402
 from server import ws  # noqa: E402
 from server.activity_log import activity_log  # noqa: E402
 
@@ -85,6 +89,7 @@ app.include_router(workflow.router, prefix="/api/workflow", tags=["workflow"])
 app.include_router(plugins.router, prefix="/api/plugins", tags=["plugins"])
 app.include_router(sdk.router, prefix="/api/sdk", tags=["sdk"])
 app.include_router(flash.router, prefix="/api/flash", tags=["flash"])
+app.include_router(cost.router, prefix="/api/cost", tags=["cost"])
 app.include_router(ws.router)
 
 

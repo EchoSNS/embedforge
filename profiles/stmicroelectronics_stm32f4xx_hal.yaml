@@ -1,0 +1,160 @@
+vendor: STMicroelectronics
+sdk: STM32F4xx HAL
+sdk_version: unknown
+supported_families:
+- STM32F4xx
+peripherals:
+  HAL_CORE:
+    instances:
+    - HAL_CORE
+    features:
+    - Global HAL init/deinit
+    - Tick management (init, suspend/resume, inc, delay, set/get frequency, priority)
+    - HAL version query
+    - Device/revision ID access
+    - Unique ID access (UID words)
+    notes:
+    - HAL_Init configures core HAL state and SysTick via HAL_InitTick
+    - HAL_Delay uses the HAL tick; behavior depends on tick frequency and suspension
+  DBGMCU:
+    instances:
+    - DBGMCU
+    features:
+    - Control debug behavior in Sleep/Stop/Standby modes (enable/disable for each)
+    notes:
+    - Useful to keep peripherals running while debugging in low-power modes
+  SYSCFG:
+    instances:
+    - SYSCFG
+    features:
+    - I/O compensation cell control (enable/disable)
+    - Memory bank swapping control (enable/disable)
+    notes:
+    - Compensation cell improves I/O speed at certain voltage ranges
+    - Memory bank swapping is device-/memory-configuration dependent
+  ADC:
+    instances: []
+    features:
+    - Initialization/de-initialization with MSP hooks
+    - Channel configuration
+    - 'Regular conversion: start/stop'
+    - Polling for conversion or events with timeout
+    - Interrupt-driven conversions (Start_IT/Stop_IT + IRQ handler)
+    - DMA-driven conversions (Start_DMA/Stop_DMA)
+    - Analog watchdog configuration and callbacks
+    - State and error retrieval
+    - Callback framework (register/unregister; conversion complete/half, level out-of-window,
+      error)
+    - 'Injected conversions: start/stop, poll, interrupt, get injected rank value'
+    - 'Multi-mode: configuration, DMA start/stop, combined value read'
+    notes:
+    - HAL_ADC_MspInit/HAL_ADC_MspDeInit must provide clocks/GPIO/DMA/IRQ wiring
+    - Use HAL_ADC_IRQHandler in IRQ to dispatch callbacks
+    - Multi-mode and injected features apply to devices that support them
+  CAN:
+    instances: []
+    features:
+    - Initialization/de-initialization with MSP hooks
+    - Filter configuration
+    - Start/stop the CAN peripheral
+    - Sleep/wake control and sleep state query
+    - 'Transmit mailbox management: add TX message, abort request, get free level,
+      query pending'
+    - Callback framework present (unregister API)
+    notes:
+    - Filters must be configured before enabling receptions
+    - TX operations are mailbox-based; ensure free mailbox availability
+    - Presence of unregister callback API implies optional callback registration (compile-time
+      enabled in HAL config)
+  CRC:
+    instances: []
+    features:
+    - Peripheral presence inferred from CRC_HandleTypeDef and HAL_CRC_StateTypeDef
+      types
+    notes:
+    - Only types observed; functions not listed in provided extract
+  CRYP:
+    instances: []
+    features:
+    - Cryptographic accelerator presence inferred (CRYP_HandleTypeDef, config, state,
+      callbacks)
+    notes:
+    - Only types observed; functions not listed in provided extract
+  DAC:
+    instances: []
+    features:
+    - DAC channel configuration structure present
+    - DAC state and callback enums present
+    notes:
+    - Only types observed; functions not listed in provided extract
+  DCMI:
+    instances: []
+    features:
+    - Digital camera interface presence inferred (handle, init, codes, sync types,
+      state, callbacks)
+    notes:
+    - Only types observed; functions not listed in provided extract
+  DFSDM:
+    instances: []
+    features:
+    - DFSDM channel and filter configuration types present (regular/injected params,
+      filter params, AWD)
+    notes:
+    - Only types observed; functions not listed in provided extract
+  CEC:
+    instances: []
+    features:
+    - CEC callback ID enum present (indicates CEC support)
+    notes:
+    - Only types observed; functions not listed in provided extract
+  MPU:
+    instances: []
+    features:
+    - MPU region init type present (indicates MPU configuration support)
+    notes:
+    - Only types observed; functions not listed in provided extract
+patterns:
+  init_sequence:
+  - Call HAL_Init to initialize the HAL and system tick
+  - Configure system clock (user code, typically in SystemClock_Config)
+  - 'For each peripheral: implement/ensure HAL_<PERIPH>_MspInit provides clocks/GPIO/DMA/IRQ'
+  - Call HAL_<PERIPH>_Init with corresponding InitTypeDef
+  - Apply peripheral-specific configuration (e.g., HAL_ADC_ConfigChannel, HAL_CAN_ConfigFilter)
+  - 'Start peripheral in desired mode: polling (PollFor*), interrupt (Start_IT + IRQ
+    hookup), or DMA (Start_DMA)'
+  - Optionally register callbacks via HAL_<PERIPH>_RegisterCallback if enabled
+  - In ISRs, call HAL_<PERIPH>_IRQHandler to service events and invoke callbacks
+  naming_conventions:
+    base_functions: HAL_<PERIPH>_<Action>() for core operations (Init, Start, Stop,
+      Config*)
+    extended: HAL_<PERIPH>Ex_*() for extended features (e.g., HAL_ADCEx_* for injected/multi-mode)
+    interrupt: Suffix _IT indicates interrupt-driven API
+    dma: Suffix _DMA indicates DMA-driven API
+    polling: Functions prefixed PollFor* provide blocking polling with timeout
+    msp: HAL_<PERIPH>_MspInit/MspDeInit are low-level hooks for clocks/GPIO/IRQ/DMA
+    handles: <PERIPH>_HandleTypeDef used to pass context/state
+    init_structs: <PERIPH>_InitTypeDef and *ConfTypeDef used for configuration
+    callbacks: User callbacks follow HAL_<PERIPH>_<Event>Callback signature; registration
+      via HAL_<PERIPH>_RegisterCallback if available
+    state_error: GetState/GetError functions expose runtime status
+  error_handling:
+  - Most APIs return HAL_StatusTypeDef; check for HAL_OK and handle HAL_ERROR/HAL_BUSY/HAL_TIMEOUT
+  - Use HAL_<PERIPH>_GetError to retrieve detailed error flags after failures
+  - When using PollFor* APIs, honor the Timeout to avoid blocking forever
+  - Ensure HAL_<PERIPH>_IRQHandler is invoked in the ISR to clear flags and run callbacks
+  - Avoid re-entrant Start/Stop calls; rely on GetState or return codes to gate operations
+constraints:
+- MSP layer (HAL_<PERIPH>_MspInit) must enable peripheral clocks and configure GPIOs,
+  DMA channels, and NVIC interrupts before starting the peripheral
+- DMA-based APIs require a properly linked DMA handle in the peripheral handle and
+  matching buffer alignment/length
+- Callback registration APIs typically require enabling the corresponding USE_HAL_<PERIPH>_REGISTER_CALLBACKS
+  option in stm32f4xx_hal_conf.h
+- ADC injected and multi-mode features are only available on devices/instances that
+  support them
+- For CAN, filters should be configured before starting the peripheral to receive
+  frames properly
+- HAL tick frequency and priority affect timing APIs; changing tick frequency impacts
+  HAL_Delay granularity
+- SuspendTick/ResumeTick will pause/resume HAL_Delay progression; avoid using HAL_Delay
+  while tick is suspended

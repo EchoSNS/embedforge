@@ -58,6 +58,7 @@ import { useRuntimeConfig } from "#app";
 
 const props = defineProps<{
   files: Record<string, string>;
+  sessionId?: string;
 }>();
 
 const config = useRuntimeConfig();
@@ -83,14 +84,26 @@ const highlightedCode = computed(() => {
 
 function highlightC(code: string): string {
   const escaped = code.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  return escaped
-    .replace(/(\/\/.*)/g, '<span class="text-white/30 italic">$1</span>')
-    .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="text-white/30 italic">$1</span>')
-    .replace(/(#\w+)/g, '<span class="text-violet-400">$1</span>')
-    .replace(/\b(void|int|uint32_t|uint16_t|uint8_t|char|float|double|struct|enum|typedef|static|const|volatile|return|if|else|while|for|switch|case|break|default)\b/g, '<span class="text-sky-400">$1</span>')
-    .replace(/\b(HAL_\w+|__HAL_\w+)/g, '<span class="text-amber-400">$1</span>')
-    .replace(/(&lt;\w+\.h&gt;|"\w+\.h")/g, '<span class="text-green-400">$1</span>')
-    .replace(/\b(\d+[ULul]*)\b/g, '<span class="text-orange-300">$1</span>');
+  // Tokenize with placeholders to prevent nested span corruption
+  const lines = escaped.split("\n");
+  return lines.map(line => {
+    const tokens: string[] = [];
+    const ph = (cls: string, text: string) => {
+      const i = tokens.length;
+      tokens.push(`<span class="${cls}">${text}</span>`);
+      return `\x00${i}\x00`;
+    };
+    let r = line;
+    r = r.replace(/(\/\/.*)/g, (_, m) => ph("text-white/30 italic", m));
+    r = r.replace(/(#\w+)/g, (_, m) => ph("text-violet-400", m));
+    r = r.replace(/("(?:[^"\\]|\\.)*")/g, (_, m) => ph("text-green-400", m));
+    r = r.replace(/(&lt;[\w./]+&gt;)/g, (_, m) => ph("text-green-400", m));
+    r = r.replace(/\b(HAL_\w+|__HAL_\w+)\b/g, (_, m) => ph("text-amber-400", m));
+    r = r.replace(/\b(void|int|uint32_t|uint16_t|uint8_t|int32_t|int16_t|int8_t|size_t|bool|char|float|double|struct|enum|typedef|static|const|volatile|extern|return|if|else|while|for|switch|case|break|default|true|false|NULL)\b/g, (_, m) => ph("text-sky-400", m));
+    r = r.replace(/\b(0[xX][0-9a-fA-F]+[UuLl]*|[0-9]+[UuLl]*)\b/g, (_, m) => ph("text-orange-300", m));
+    r = r.replace(/\x00(\d+)\x00/g, (_, idx) => tokens[parseInt(idx)]);
+    return r;
+  }).join("\n");
 }
 
 function copyFile() {
@@ -101,9 +114,8 @@ function copyFile() {
 }
 
 function downloadAll() {
-  const sessionId = new URLSearchParams(window.location.search).get("session");
-  if (sessionId) {
-    window.open(`${config.public.apiBase}/api/workflow/${sessionId}/download`);
+  if (props.sessionId) {
+    window.open(`${config.public.apiBase}/api/workflow/${props.sessionId}/download`);
   }
 }
 </script>

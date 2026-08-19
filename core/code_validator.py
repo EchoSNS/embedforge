@@ -54,10 +54,20 @@ class CodeValidator:
         report = ValidationReport()
         logger.info("Starting validation of %d file(s)", len(files))
 
+        # Build set of project-internal header basenames for include resolution
+        project_headers = set()
+        for fname in files:
+            if fname.endswith(".h"):
+                # Store both full path and basename for resolution
+                project_headers.add(fname.rsplit("/", 1)[-1])
+                project_headers.add(fname)
+
         for filename, content in files.items():
             logger.debug("Validating file: %s (%d bytes)", filename, len(content))
-            self._check_includes(filename, content, report)
-            self._check_pins(content, report)
+            self._check_includes(filename, content, report, project_headers)
+            # Only validate pins in production source files, not mocks/tests
+            if not self._is_test_or_mock(filename):
+                self._check_pins(content, report)
             self._check_rules(content, report)
             self._check_syntax(filename, content, report)
 
@@ -71,8 +81,8 @@ class CodeValidator:
         )
         return report
 
-    def _check_includes(self, filename: str, code: str, report: ValidationReport) -> None:
-        """Verify #include'd headers can be resolved in the SDK."""
+    def _check_includes(self, filename: str, code: str, report: ValidationReport, project_headers: set) -> None:
+        """Verify #include'd headers can be resolved."""
         from core.sdk_analyzer import SDKAnalyzer
 
         board_template = self._registry.get_board_template(
@@ -83,7 +93,11 @@ class CodeValidator:
 
         includes = analyzer.get_includes_from_code(code)
         for inc in includes:
-            if not self._is_standard_header(inc) and not analyzer.resolve_header(inc):
+            if self._is_standard_header(inc):
+                continue
+            if self._is_internal_header(inc, project_headers):
+                continue
+            if not analyzer.resolve_header(inc):
                 logger.debug("Unresolved include in %s: %s", filename, inc)
                 report.missing_headers.append(f"{filename}: cannot resolve '{inc}'")
 
@@ -131,6 +145,24 @@ class CodeValidator:
     @staticmethod
     def _is_standard_header(name: str) -> bool:
         return name in _STANDARD_C_HEADERS or name.startswith("std")
+
+    @staticmethod
+    def _is_internal_header(name: str, project_headers: set) -> bool:
+        """Check if a header is project-internal, a mock, or a test framework header."""
+        basename = name.rsplit("/", 1)[-1]
+        if basename in project_headers or name in project_headers:
+            return True
+        if basename.startswith("mock_"):
+            return True
+        if basename.startswith("unity"):
+            return True
+        return False
+
+    @staticmethod
+    def _is_test_or_mock(filename: str) -> bool:
+        """Return True for test and mock files that shouldn't be pin-validated."""
+        base = filename.rsplit("/", 1)[-1]
+        return base.startswith("test_") or base.startswith("mock_")
 
 
 _STANDARD_C_HEADERS = frozenset({

@@ -111,6 +111,167 @@
           </div>
         </template>
 
+        <!-- Device Data Tab -->
+        <template v-if="activeTab === 'device'">
+          <div class="space-y-1">
+            <h2 class="text-xl font-bold">Device Data Import</h2>
+            <p class="text-sm text-muted-foreground">Import pin-mux tables and peripheral data from vendor tools (CubeMX, SVD, CMSIS-Pack, ATDF).</p>
+          </div>
+
+          <!-- Auto-Discovery -->
+          <div class="rounded-xl border bg-card p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <p class="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Auto-Detect Installed SDKs</p>
+              <button
+                class="flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs hover:bg-accent transition-all"
+                @click="runAutoDiscovery"
+              >
+                <Search class="h-3 w-3" />
+                Scan System
+              </button>
+            </div>
+            <div v-if="discoveredTools.length" class="space-y-1">
+              <div
+                v-for="tool in discoveredTools"
+                :key="tool.path"
+                class="flex items-center justify-between rounded-lg bg-secondary/50 px-3 py-2"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="text-[10px] rounded-full bg-primary/10 text-primary px-2 py-0.5 font-medium">{{ tool.kind }}</span>
+                  <span class="text-xs font-medium">{{ tool.name }}</span>
+                  <span v-if="tool.vendor" class="text-[10px] text-muted-foreground">{{ tool.vendor }}</span>
+                </div>
+                <button
+                  v-if="tool.importable"
+                  class="rounded px-2 py-1 text-[10px] bg-primary text-primary-foreground hover:opacity-90 transition-all"
+                  @click="devicePath = tool.path; listDevicesAtPath()"
+                >
+                  Use
+                </button>
+                <span v-else class="text-[10px] text-muted-foreground truncate max-w-[200px]">{{ tool.path }}</span>
+              </div>
+            </div>
+            <p v-else class="text-xs text-muted-foreground">Click "Scan System" to detect installed SDKs and toolchains.</p>
+          </div>
+
+          <!-- Path Input + File Browser -->
+          <div class="rounded-xl border bg-card p-4 space-y-4">
+            <div class="space-y-2">
+              <label class="text-xs font-medium text-muted-foreground">Source Path</label>
+              <div class="flex gap-2">
+                <input
+                  v-model="devicePath"
+                  class="flex-1 rounded-lg border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="C:/STM32CubeMX or path/to/device.svd"
+                  @keydown.enter="listDevicesAtPath"
+                />
+                <button
+                  class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm hover:bg-accent transition-all"
+                  @click="browseDir(devicePath || '')"
+                >
+                  <FolderSearch class="h-3.5 w-3.5" />
+                  Browse
+                </button>
+                <button
+                  class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
+                  :disabled="!devicePath.trim() || deviceImporting"
+                  @click="listDevicesAtPath"
+                >
+                  <Search v-if="!deviceImporting" class="h-3.5 w-3.5" />
+                  <Loader2 v-else class="h-3.5 w-3.5 animate-spin" />
+                  Scan
+                </button>
+              </div>
+            </div>
+
+            <!-- Directory Browser -->
+            <Transition name="fade-slide">
+              <div v-if="browseEntries.length" class="space-y-2">
+                <div class="flex items-center justify-between">
+                  <p class="text-[10px] text-muted-foreground font-mono truncate max-w-[400px]">{{ browsePath }}</p>
+                  <button class="text-[10px] text-muted-foreground hover:text-foreground" @click="browseEntries = []">Close</button>
+                </div>
+                <div class="max-h-48 overflow-y-auto rounded-lg border bg-background p-1 space-y-0.5">
+                  <button
+                    v-for="entry in browseEntries"
+                    :key="entry.path"
+                    class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent transition-colors text-left"
+                    @click="onBrowseClick(entry)"
+                  >
+                    <FolderSearch v-if="entry.type === 'directory' || entry.type === 'drive'" class="h-3 w-3 text-amber-500 shrink-0" />
+                    <FileCode v-else class="h-3 w-3 text-sky-500 shrink-0" />
+                    <span class="flex-1 truncate">{{ entry.name }}</span>
+                    <span v-if="entry.size" class="text-[10px] text-muted-foreground">{{ (entry.size / 1024).toFixed(0) }}KB</span>
+                  </button>
+                </div>
+              </div>
+            </Transition>
+
+            <!-- Available Devices -->
+            <Transition name="fade-slide">
+              <div v-if="deviceAvailable.length" class="space-y-2">
+                <p class="text-xs font-medium text-muted-foreground">Available Devices ({{ deviceAvailable.length }})</p>
+                <input
+                  v-model="deviceFilter"
+                  class="w-full rounded-lg border bg-background px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-ring"
+                  placeholder="Filter devices…"
+                />
+                <div class="max-h-48 overflow-y-auto rounded-lg border bg-background p-2 space-y-1">
+                  <button
+                    v-for="dev in filteredDevices"
+                    :key="dev"
+                    class="flex w-full items-center gap-2 rounded px-2 py-1 text-xs hover:bg-accent transition-colors text-left"
+                    :class="{ 'bg-primary/10 text-primary': deviceSelectedName === dev }"
+                    @click="deviceSelectedName = dev"
+                  >
+                    <Cpu class="h-3 w-3 shrink-0" />
+                    {{ dev }}
+                  </button>
+                </div>
+                <button
+                  class="flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all"
+                  :disabled="!deviceSelectedName || deviceImporting"
+                  @click="importDevice(deviceSelectedName)"
+                >
+                  <HardDrive v-if="!deviceImporting" class="h-3 w-3" />
+                  <Loader2 v-else class="h-3 w-3 animate-spin" />
+                  Import Selected
+                </button>
+              </div>
+            </Transition>
+
+            <!-- Import Result -->
+            <Transition name="fade-slide">
+              <div v-if="deviceImportResult" class="rounded-lg border border-green-500/30 bg-green-500/5 p-3 space-y-1">
+                <p class="text-xs font-medium text-green-600 flex items-center gap-1.5">
+                  <Check class="h-3.5 w-3.5" /> Import successful
+                </p>
+                <p class="text-xs text-muted-foreground">
+                  {{ deviceImportResult.device }} ({{ deviceImportResult.package || 'unknown package' }}) —
+                  {{ deviceImportResult.pin_mux_count }} pin-mux entries,
+                  {{ deviceImportResult.peripheral_count }} peripherals
+                </p>
+              </div>
+            </Transition>
+          </div>
+
+          <!-- Imported Devices Table -->
+          <div v-if="deviceImported.length" class="rounded-xl border bg-card overflow-hidden">
+            <div class="border-b px-4 py-3">
+              <p class="text-sm font-medium">Imported Devices ({{ deviceImported.length }})</p>
+            </div>
+            <div class="divide-y max-h-64 overflow-y-auto">
+              <div v-for="dev in deviceImported" :key="dev.device" class="flex items-center justify-between px-4 py-2.5">
+                <div>
+                  <p class="text-xs font-medium">{{ dev.device }}</p>
+                  <p class="text-[10px] text-muted-foreground">{{ dev.vendor }} · {{ dev.family }} · {{ dev.source_format }}</p>
+                </div>
+                <span class="text-[10px] text-muted-foreground rounded-full bg-secondary px-2 py-0.5">{{ dev.package || '—' }}</span>
+              </div>
+            </div>
+          </div>
+        </template>
+
         <!-- Profile Viewer/Editor Tab -->
         <template v-if="activeTab === 'profile'">
           <div class="space-y-1">
@@ -297,6 +458,15 @@
           </div>
         </template>
 
+        <!-- Cost Monitor Tab -->
+        <template v-if="activeTab === 'cost'">
+          <div class="space-y-1">
+            <h2 class="text-xl font-bold">Cost Monitor</h2>
+            <p class="text-sm text-muted-foreground">Track LLM token usage and estimated spend across sessions.</p>
+          </div>
+          <CostTracker />
+        </template>
+
         <!-- Activity Log (always visible) -->
         <ActivityLog />
 
@@ -311,9 +481,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from "vue";
-import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2 } from "@lucide/vue";
+import { ref, watch, onMounted, computed } from "vue";
+import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2, Cpu, HardDrive, Check, DollarSign } from "@lucide/vue";
 import { useSdkManager } from "~/composables/useSdkManager";
+import { useRuntimeConfig } from "#app";
 
 const {
   scanning, generating, scanResult, profile, error,
@@ -334,11 +505,33 @@ const profilesList = ref<any[]>([]);
 const profileRefs = ref<any[]>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 
+// Device Data tab state
+const config = useRuntimeConfig();
+const deviceApiBase = config.public.apiBase as string;
+const devicePath = ref("");
+const deviceImporting = ref(false);
+const deviceAvailable = ref<string[]>([]);
+const deviceImported = ref<any[]>([]);
+const deviceImportResult = ref<any>(null);
+const deviceSelectedName = ref("");
+const deviceFilter = ref("");
+const browseEntries = ref<any[]>([]);
+const browsePath = ref("");
+const discoveredTools = ref<any[]>([]);
+
+const filteredDevices = computed(() => {
+  if (!deviceFilter.value) return deviceAvailable.value.slice(0, 100);
+  const q = deviceFilter.value.toUpperCase();
+  return deviceAvailable.value.filter(d => d.toUpperCase().includes(q)).slice(0, 100);
+});
+
 const tabs = [
   { id: "scan", label: "SDK Scanner", icon: FolderSearch },
+  { id: "device", label: "Device Data", icon: Database },
   { id: "profile", label: "Active Profile", icon: FileCode },
   { id: "library", label: "Profile Library", icon: Library },
   { id: "reference", label: "Reference Analyzer", icon: Settings2 },
+  { id: "cost", label: "Cost Monitor", icon: DollarSign },
 ];
 
 watch(profile, (p) => {
@@ -353,6 +546,7 @@ watch(refProfileName, async (name) => {
 onMounted(async () => {
   await loadProfile();
   await refreshProfiles();
+  await refreshImportedDevices();
 });
 
 async function loadProfile() {
@@ -370,6 +564,77 @@ async function runScan() {
 async function runGenerate() {
   await generateProfile(sdkPath.value, vendorName.value, sdkName.value);
   await refreshProfiles();
+}
+
+// Device Data functions
+async function refreshImportedDevices() {
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/imported`);
+    const data = await res.json();
+    deviceImported.value = data.devices || [];
+  } catch { /* backend not reachable */ }
+}
+
+async function listDevicesAtPath() {
+  if (!devicePath.value.trim()) return;
+  deviceImporting.value = true;
+  deviceAvailable.value = [];
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/list-available`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: devicePath.value }),
+    });
+    const data = await res.json();
+    deviceAvailable.value = data.devices || [];
+  } catch { /* ignore */ }
+  deviceImporting.value = false;
+}
+
+async function importDevice(deviceName: string = "") {
+  deviceImporting.value = true;
+  deviceImportResult.value = null;
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/device/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: devicePath.value, device_name: deviceName || deviceSelectedName.value }),
+    });
+    deviceImportResult.value = await res.json();
+    await refreshImportedDevices();
+  } catch { /* ignore */ }
+  deviceImporting.value = false;
+}
+
+async function browseDir(path: string) {
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/browse`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    const data = await res.json();
+    browseEntries.value = data.entries || [];
+    browsePath.value = data.path || "";
+  } catch { /* ignore */ }
+}
+
+function onBrowseClick(entry: any) {
+  if (entry.type === "directory" || entry.type === "drive") {
+    browseDir(entry.path);
+  } else {
+    devicePath.value = entry.path;
+    browseEntries.value = [];
+    listDevicesAtPath();
+  }
+}
+
+async function runAutoDiscovery() {
+  try {
+    const res = await fetch(`${deviceApiBase}/api/sdk/discover`);
+    const data = await res.json();
+    discoveredTools.value = data.tools || [];
+  } catch { /* ignore */ }
 }
 
 async function saveProfile() {
