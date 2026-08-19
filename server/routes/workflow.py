@@ -41,8 +41,19 @@ class ChatMessage(BaseModel):
 async def start_workflow(req: StartRequest):
     from config.logging_config import SessionLogContext
     from server.activity_log import activity_log
+    from core.board_registry import get_board_registry
 
     registry = get_registry()
+
+    # Auto-switch plugin based on board's declared plugin
+    board_reg = get_board_registry()
+    board_data = board_reg.get_board(req.board_name)
+    if board_data and board_data.get("plugin"):
+        target_plugin = board_data["plugin"]
+        if target_plugin in registry._plugins and registry._active_plugin != target_plugin:
+            registry.activate(target_plugin)
+            activity_log.info(f"Auto-switched to plugin: {target_plugin}", f"Board: {req.board_name}")
+
     engine = WorkflowEngine(registry)
 
     activity_log.step("New session started", f"Board: {req.board_name}")
@@ -87,10 +98,20 @@ async def get_state(session_id: str):
 @router.post("/{session_id}/approve/{stage}")
 async def approve_stage(session_id: str, stage: str):
     from server.activity_log import activity_log
+    from core.board_registry import get_board_registry
 
     logger.info("Stage approval: session=%s, stage=%s", session_id, stage)
     state = _get_session(session_id)
     registry = get_registry()
+
+    # Ensure correct plugin is active for this session's board
+    board_reg = get_board_registry()
+    board_data = board_reg.get_board(state.board_name)
+    if board_data and board_data.get("plugin"):
+        target_plugin = board_data["plugin"]
+        if target_plugin in registry._plugins and registry._active_plugin != target_plugin:
+            registry.activate(target_plugin)
+
     engine = WorkflowEngine(registry)
 
     stage_labels = {

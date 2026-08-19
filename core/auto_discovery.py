@@ -45,10 +45,12 @@ def discover_all() -> List[DiscoveredTool]:
     results.extend(_discover_esp_idf())
     results.extend(_discover_microchip())
     results.extend(_discover_infineon())
+    results.extend(_discover_aurix())
     results.extend(_discover_renesas())
     results.extend(_discover_ti())
     results.extend(_discover_silabs())
     results.extend(_discover_tools())
+    results.extend(_discover_registered_paths())
     return results
 
 
@@ -234,6 +236,42 @@ def _discover_infineon() -> List[DiscoveredTool]:
     return found
 
 
+def _discover_aurix() -> List[DiscoveredTool]:
+    found = []
+    # Check env var
+    aurix_sdk = os.environ.get("AURIX_SDK_PATH", "")
+    if aurix_sdk and Path(aurix_sdk).exists():
+        found.append(DiscoveredTool(name="AURIX iLLD", kind="device_data", path=aurix_sdk, vendor="Infineon", importable=True))
+
+    # Detect AURIX Development Studio
+    tricore = shutil.which("tricore-elf-gcc")
+    if tricore:
+        found.append(DiscoveredTool(name="TriCore GCC", kind="toolchain", path=tricore, vendor="Infineon"))
+
+    # Scan common AURIX workspace paths
+    if platform.system() == "Windows":
+        user_home = Path.home()
+        for p in user_home.glob("AURIX-*-workspace"):
+            # Look for iLLD Libraries inside workspace projects
+            for lib_dir in p.rglob("Libraries/iLLD"):
+                if lib_dir.is_dir():
+                    found.append(DiscoveredTool(
+                        name="AURIX iLLD (workspace)", kind="device_data",
+                        path=str(lib_dir.parent), vendor="Infineon", importable=True,
+                    ))
+                    break
+            break  # Only report first workspace
+
+        # AURIX Development Studio install
+        for ads_path in [Path("C:/Infineon"), Path(os.environ.get("PROGRAMFILES", "")) / "Infineon"]:
+            if ads_path.exists():
+                for ads in ads_path.glob("AURIX-Studio*"):
+                    found.append(DiscoveredTool(name="AURIX Development Studio", kind="sdk", path=str(ads), vendor="Infineon"))
+                    break
+
+    return found
+
+
 def _discover_renesas() -> List[DiscoveredTool]:
     found = []
     fsp = os.environ.get("FSP_PATH", "")
@@ -265,3 +303,68 @@ def _discover_silabs() -> List[DiscoveredTool]:
     if simplicity:
         found.append(DiscoveredTool(name="Simplicity Commander", kind="tool", path=simplicity, vendor="Silicon Labs"))
     return found
+
+
+def _discover_registered_paths() -> List[DiscoveredTool]:
+    """Load user-registered SDK paths from the config database."""
+    found = []
+    try:
+        from core.device_db import get_device_db
+        db = get_device_db()
+        conn = db._get_conn()
+        # Check if we have a registered_paths table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS registered_sdk_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                vendor TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT 'sdk'
+            )
+        """)
+        rows = conn.execute("SELECT name, path, vendor, kind FROM registered_sdk_paths").fetchall()
+        for r in rows:
+            p = Path(r[1])
+            if p.exists():
+                found.append(DiscoveredTool(
+                    name=r[0], path=r[1], vendor=r[2], kind=r[3], importable=True,
+                ))
+    except Exception:
+        pass
+    return found
+
+
+def register_sdk_path(name: str, path: str, vendor: str = "", kind: str = "sdk") -> None:
+    """Persist a user-registered SDK path."""
+    try:
+        from core.device_db import get_device_db
+        db = get_device_db()
+        conn = db._get_conn()
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS registered_sdk_paths (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                path TEXT NOT NULL UNIQUE,
+                vendor TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT 'sdk'
+            )
+        """)
+        conn.execute(
+            "INSERT OR REPLACE INTO registered_sdk_paths (name, path, vendor, kind) VALUES (?,?,?,?)",
+            (name, path, vendor, kind),
+        )
+        conn.commit()
+    except Exception:
+        pass
+
+
+def unregister_sdk_path(path: str) -> None:
+    """Remove a registered SDK path."""
+    try:
+        from core.device_db import get_device_db
+        db = get_device_db()
+        conn = db._get_conn()
+        conn.execute("DELETE FROM registered_sdk_paths WHERE path=?", (path,))
+        conn.commit()
+    except Exception:
+        pass

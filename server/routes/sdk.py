@@ -764,6 +764,32 @@ async def auto_discover():
     }
 
 
+class RegisterSdkRequest(BaseModel):
+    name: str
+    path: str
+    vendor: str = ""
+    kind: str = "sdk"
+
+
+@router.post("/discover/register")
+async def register_sdk(req: RegisterSdkRequest):
+    """Register a custom SDK path for persistent discovery."""
+    from core.auto_discovery import register_sdk_path
+    if not Path(req.path).exists():
+        raise HTTPException(400, f"Path does not exist: {req.path}")
+    register_sdk_path(req.name, req.path, req.vendor, req.kind)
+    log.info(f"Registered SDK path: {req.name}", req.path)
+    return {"status": "registered", "name": req.name, "path": req.path}
+
+
+@router.post("/discover/unregister")
+async def unregister_sdk(req: RegisterSdkRequest):
+    """Remove a registered SDK path."""
+    from core.auto_discovery import unregister_sdk_path
+    unregister_sdk_path(req.path)
+    return {"status": "unregistered", "path": req.path}
+
+
 class BrowseRequest(BaseModel):
     path: str = ""
 

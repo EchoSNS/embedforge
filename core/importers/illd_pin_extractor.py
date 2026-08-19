@@ -23,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 # Matches: IfxModule<Instance>_<Signal>_P<port>_<pin>_<DIR>
 _PIN_CONST_RE = re.compile(
-    r"Ifx(\w+?)(\d+)_(\w+?)_P(\d+)_(\d+)_(IN|OUT|INOUT)",
+    r"Ifx(\w+?)(\d+)_(\w+?)_P(\d+)_(\d+)_(INOUT|OUT|IN)",
 )
 
 # Simpler pattern for lines like: IfxAsclin0_TX_P14_0_OUT
 _PIN_LINE_RE = re.compile(
-    r"Ifx(\w+?)(\d+)_(\w+)_P(\d+)_(\d+)_(IN|OUT|INOUT)"
+    r"Ifx(\w+?)(\d+)_(\w+)_P(\d+)_(\d+)_(INOUT|OUT|IN)"
 )
 
 _DIR_MAP = {
@@ -109,8 +109,12 @@ class ILLDPinExtractor(DeviceDataImporter):
         pin_mux: List[PinMuxEntry] = []
         peripherals: Dict[str, str] = {}
 
-        # Find all PinMap headers
-        pin_map_files = list(p.rglob("*_PinMap.h")) + list(p.rglob("*PinMap*.h"))
+        # Target package-specific PinMap headers (contain actual pin constants)
+        pin_map_files = list(p.rglob("*_PinMap_*_COM.h"))
+        if not pin_map_files:
+            pin_map_files = list(p.rglob("*_PinMap_*.h"))
+        if not pin_map_files:
+            pin_map_files = list(p.rglob("*_PinMap.h"))
 
         for header in pin_map_files:
             try:
