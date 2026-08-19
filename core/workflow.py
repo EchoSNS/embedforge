@@ -68,6 +68,49 @@ class WorkflowState:
     created_at: str = field(default_factory=lambda: datetime.now(tz=None).isoformat())
     history: List[Dict[str, Any]] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
+    snapshots: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+
+    def save_snapshot(self) -> None:
+        """Save a snapshot of the current stage outputs for rollback."""
+        import copy
+        self.snapshots[self.stage.value] = {
+            "requirements": copy.deepcopy(self.requirements),
+            "hardware_spec": copy.deepcopy(self.hardware_spec),
+            "software_arch": copy.deepcopy(self.software_arch),
+            "software_detailed": copy.deepcopy(self.software_detailed),
+            "generated_code": copy.deepcopy(self.generated_code),
+            "review_result": copy.deepcopy(self.review_result),
+            "stage": self.stage.value,
+        }
+
+    def rollback_to(self, target_stage: str) -> bool:
+        """Rollback state to a previous stage snapshot. Returns True if successful."""
+        stage_order = [s.value for s in WorkflowStage]
+        if target_stage not in stage_order:
+            return False
+
+        target_idx = stage_order.index(target_stage)
+        current_idx = stage_order.index(self.stage.value)
+        if target_idx >= current_idx:
+            return False
+
+        # Clear outputs for stages after target
+        clear_map = {
+            "hardware": ["hardware_spec"],
+            "software_architecture": ["software_arch"],
+            "software_detailed": ["software_detailed"],
+            "codegen": ["generated_code"],
+            "review": ["review_result"],
+            "build": ["build_result"],
+        }
+        for stage_val in stage_order[target_idx + 1:]:
+            for attr in clear_map.get(stage_val, []):
+                setattr(self, attr, {})
+
+        self.stage = WorkflowStage(target_stage)
+        self.errors = []
+        self.history.append({"stage": "rollback", "target": target_stage, "timestamp": datetime.utcnow().isoformat()})
+        return True
 
 
 class WorkflowEngine:
@@ -85,6 +128,26 @@ class WorkflowEngine:
     def __init__(self, registry: PluginRegistry) -> None:
         self._registry = registry
         self._current_session_id = "unknown"
+        self._rag = None
+
+    def _get_rag_context(self, query: str, n_results: int = 3) -> str:
+        """Query RAG pipeline if enabled, return formatted context or empty string."""
+        import os
+        if os.getenv("EMBEDFORGE_ENABLE_RAG", "false").lower() != "true":
+            return ""
+        try:
+            if self._rag is None:
+                from rag import RAGPipeline
+                self._rag = RAGPipeline()
+                if not self._rag.initialize():
+                    self._rag = None
+                    return ""
+            docs = self._rag.query(query, n_results=n_results)
+            if docs:
+                return "\nRELEVANT DOCUMENTATION:\n" + "\n---\n".join(docs) + "\n"
+        except Exception as e:
+            logger.debug("RAG query failed: %s", e)
+        return ""
 
     def initialize_state(self, user_input: str, board_name: str) -> WorkflowState:
         """Create initial workflow state from user input and board selection."""
@@ -134,11 +197,14 @@ class WorkflowEngine:
                 f"\nCONSTRAINTS:\n{profile.get_constraints_context()}\n"
             )
 
+        rag_context = self._get_rag_context(state.user_input)
+
         user_prompt = (
             f"USER REQUIREMENT:\n{state.user_input}\n\n"
             f"BOARD: {state.board_name}\n"
             f"MCU CAPABILITIES:\n{json.dumps(state.sdk_capabilities, indent=2)}\n"
             f"{profile_context}\n"
+            f"{rag_context}"
             f"Produce a structured requirements JSON matching the output schema."
         )
 

@@ -290,3 +290,132 @@ Requires `pip install pyocd` (optional dependency via `pip install -e ".[flash]"
 - **LLM**: `config/llm_config.py` — multi-provider factory from env vars
 - **App**: `config/settings.py` — plugin name, output dir, log level
 - **Plugins**: auto-discovered from `plugins/` directory at startup
+
+## Cost Tracking & Observability
+
+### Auto-Instrumented Cost Tracking
+
+Every LLM call is metered automatically. `get_llm(session_id, stage)` attaches a
+`CostTrackingCallback` that intercepts token counts from:
+
+1. `response.usage_metadata` (modern LangChain — actual provider-reported tokens)
+2. `response.llm_output.token_usage` (classic OpenAI/Azure path)
+
+**Pricing**: Built-in table for common models + `EMBEDFORGE_COST_OVERRIDES` env var
+for custom deployments. Exposed via `GET /api/cost/pricing`.
+
+### Metrics Dashboard (`/metrics`)
+
+- **Cost over time** — configurable bucket size (5min, 15min, hourly, daily)
+- **Cost by stage** — breakdown showing which pipeline stages are most expensive
+- **Performance table** — calls, avg latency, tokens per stage
+- **Recent calls** — detailed log of all LLM invocations
+- **Cache stats** — hit rate, entries, clear button
+
+### Budget Alerts
+
+- `EMBEDFORGE_BUDGET_USD` env var sets a spending cap
+- `PUT /api/cost/budget` sets it at runtime
+- Budget status shown in metrics sidebar with color-coded progress bar
+- Callbacks fired when budget is exceeded
+
+### LLM Response Cache (`core/llm_cache.py`)
+
+SHA-256 keyed LRU cache that stores prompt→response pairs. When the exact same
+system+user prompt is sent again, the cached response is returned instantly with
+zero tokens consumed. Integrated into `WorkflowEngine._invoke_llm()`.
+
+- `EMBEDFORGE_CACHE_SIZE` (default 100) controls max entries
+- `GET /api/cost/cache` — hit/miss stats
+- `DELETE /api/cost/cache` — clear cache
+
+### Model-per-Stage Routing
+
+Different stages can use different models to optimize cost:
+
+```
+EMBEDFORGE_STAGE_MODELS={"refiner": "gpt-4o-mini", "chat": "gpt-4o-mini"}
+```
+
+Configurable at runtime via Settings → Model Routing tab or `PUT /api/cost/stage-models`.
+Stages not in the map use the default deployment.
+
+### Structured Logging (`config/logging_config.py`)
+
+JSON-formatted logs with session correlation IDs:
+```json
+{"ts": "...", "level": "INFO", "logger": "core.workflow", "msg": "...", "session_id": "abc123"}
+```
+
+## Security
+
+### Prompt Injection Guard (`core/prompt_guard.py`)
+
+User input is sanitized before embedding in LLM prompts:
+- 8 regex patterns detect common injection attacks (persona hijack, role injection, etc.)
+- Special model tokens (`<|endoftext|>`, `<|im_start|>`) are stripped
+- Input truncated to 5000 chars
+- Applied at workflow entry (`initialize_state`) and WebSocket chat
+
+### Path Traversal Protection
+
+`/api/sdk/scan` validates paths against `EMBEDFORGE_SDK_ROOTS` (semicolon-separated
+allowlist). If unset, all paths are accessible (dev mode only).
+
+### Container Hardening
+
+Dockerfile runs as non-root `appuser` with health check.
+
+## Code Parsing
+
+### Tree-sitter C Parser (`core/ts_parser.py`)
+
+Replaces regex-based header parsing with proper AST analysis via `tree-sitter-c`.
+Handles multi-line declarations, `#ifdef` guards, attribute-decorated functions,
+and nested structs. Falls back to regex if tree-sitter fails.
+
+### SDK Analyzer (`core/sdk_analyzer.py`)
+
+Scans SDK header trees and extracts:
+- Function signatures (name, return type, parameters)
+- Struct/union/enum typedefs with fields
+- `#define` macros
+
+Output feeds the driver catalog, profile generator, and LLM context.
+
+## Structured Output
+
+All workflow stages use Pydantic schemas (`core/schemas.py`) with LangChain's
+`with_structured_output()` to enforce valid JSON from the LLM. Falls back to
+regex-based JSON extraction if structured output is unavailable.
+
+Schemas: `RefinedRequirements`, `HardwareSpec`, `SoftwareArchitecture`,
+`SoftwareDetailed`, `ReviewOutput`
+
+## State Machine Rollback
+
+`WorkflowState.rollback_to(stage)` allows returning to a previous stage:
+- Clears all outputs after the target stage
+- Preserves outputs up to and including the target
+- Snapshots are saved before each stage execution
+- `POST /api/workflow/{id}/rollback/{stage}` — API endpoint
+
+## RAG Integration (Optional)
+
+When `EMBEDFORGE_ENABLE_RAG=true`, the `RAGPipeline` provides vector search
+over ingested vendor documentation (PDFs, datasheets, reference manuals).
+Results are injected into the refiner prompt as additional context.
+
+Requires: `pip install embedforge[rag]` (chromadb + sentence-transformers)
+
+## Deterministic Validation
+
+The review stage runs `CodeValidator` (deterministic checks) **before** the AI
+reviewer to catch issues without consuming LLM tokens:
+
+1. **Include resolution** — headers exist in SDK
+2. **Pin validation** — symbols match MCU pin map
+3. **Architecture rules** — HAL conventions checked via regex
+4. **Syntax check** — brace balance
+
+If deterministic checks fail, the AI reviewer is skipped entirely.

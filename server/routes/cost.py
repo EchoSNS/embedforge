@@ -4,7 +4,7 @@ Cost API routes — expose LLM usage and spending data to the frontend.
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter
 from pydantic import BaseModel
@@ -75,3 +75,37 @@ async def clear_cache():
     from core.llm_cache import llm_cache
     llm_cache.clear()
     return {"status": "cleared"}
+
+
+@router.get("/stage-models")
+async def get_stage_model_config():
+    """Return current stage→model mapping and the default model."""
+    from config.settings import get_stage_models, ALL_STAGES, AppSettings
+    from config.llm_config import LLMSettings
+
+    settings = LLMSettings.from_env()
+    overrides = get_stage_models()
+
+    stages = {}
+    for stage in ALL_STAGES:
+        stages[stage] = overrides.get(stage, None)
+
+    return {
+        "default_model": settings.model,
+        "provider": settings.provider,
+        "stages": stages,
+    }
+
+
+class StageModelsUpdate(BaseModel):
+    stages: Dict[str, Optional[str]]
+
+
+@router.put("/stage-models")
+async def update_stage_models(req: StageModelsUpdate):
+    """Update stage→model mapping at runtime."""
+    from config.settings import set_stage_models, ALL_STAGES
+
+    cleaned = {k: v for k, v in req.stages.items() if k in ALL_STAGES and v}
+    set_stage_models(cleaned)
+    return await get_stage_model_config()

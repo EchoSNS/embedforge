@@ -113,6 +113,19 @@ class SDKAnalyzer:
         except OSError:
             return
 
+        header_name = str(header)
+
+        # Use tree-sitter AST parser (handles multi-line decls, #ifdef, attributes)
+        try:
+            from core.ts_parser import parse_header
+            before_funcs = len(result.functions)
+            parse_header(content.encode("utf-8", errors="replace"), header_name, result)
+            if len(result.functions) > before_funcs or result.headers_scanned > 0:
+                return  # tree-sitter succeeded, skip regex fallback
+        except Exception as e:
+            logger.debug("Tree-sitter parse failed for %s, falling back to regex: %s", header.name, e)
+
+        # Regex fallback
         result.headers_scanned += 1
         header_name = str(header)
 

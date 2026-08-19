@@ -22,6 +22,23 @@ def _parse_stage_models() -> dict:
         return {}
 
 
+# Runtime-mutable stage model overrides (set via API, takes precedence over env)
+_runtime_stage_models: Optional[dict] = None
+
+ALL_STAGES = ["refiner", "hardware", "software_arch", "software_detailed", "codegen", "codegen_mock", "codegen_test", "codegen_prod", "review", "fix_loop", "chat", "profile_generation"]
+
+
+def get_stage_models() -> dict:
+    if _runtime_stage_models is not None:
+        return _runtime_stage_models
+    return _parse_stage_models()
+
+
+def set_stage_models(models: dict) -> None:
+    global _runtime_stage_models
+    _runtime_stage_models = models
+
+
 @dataclass
 class AppSettings:
     """Application-wide settings resolved from environment and defaults."""

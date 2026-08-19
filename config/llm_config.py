@@ -95,8 +95,8 @@ def get_llm(
 
     # Stage-based model override
     if stage:
-        from config.settings import AppSettings
-        stage_models = AppSettings().stage_models
+        from config.settings import get_stage_models
+        stage_models = get_stage_models()
         if stage in stage_models:
             settings = LLMSettings(
                 provider=settings.provider,

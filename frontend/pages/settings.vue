@@ -458,6 +458,83 @@
           </div>
         </template>
 
+        <!-- Model Routing Tab -->
+        <template v-if="activeTab === 'models'">
+          <div class="space-y-1">
+            <h2 class="text-xl font-bold">Model Routing</h2>
+            <p class="text-sm text-muted-foreground">
+              Route pipeline stages to different models. Leave blank to use the default deployment.
+            </p>
+          </div>
+
+          <div v-if="stageModelConfig" class="space-y-4">
+            <!-- Default model info -->
+            <div class="rounded-xl border bg-card/50 p-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <div class="text-xs font-medium">Default Model</div>
+                  <div class="text-sm text-muted-foreground mt-0.5">
+                    <span class="font-mono bg-accent rounded px-1.5 py-0.5 text-foreground">{{ stageModelConfig.default_model }}</span>
+                    via <span class="capitalize">{{ stageModelConfig.provider }}</span>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Transition name="fade">
+                    <span v-if="modelSaved" class="flex items-center gap-1 text-xs text-emerald-400">
+                      <Check class="h-3 w-3" /> Saved
+                    </span>
+                  </Transition>
+                  <button
+                    class="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 transition-all active:scale-[0.97]"
+                    :disabled="modelSaving"
+                    @click="saveStageModels"
+                  >
+                    <Loader2 v-if="modelSaving" class="h-3 w-3 animate-spin" />
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stage grid -->
+            <div class="rounded-xl border bg-card overflow-hidden">
+              <div class="grid grid-cols-3 gap-0 text-[10px] text-muted-foreground uppercase tracking-wider px-4 py-2 border-b bg-accent/30">
+                <span>Stage</span>
+                <span>Model Override</span>
+                <span>Effective Model</span>
+              </div>
+              <div class="divide-y">
+                <div
+                  v-for="stage in Object.keys(stageModelConfig.stages)"
+                  :key="stage"
+                  class="grid grid-cols-3 gap-0 items-center px-4 py-2 hover:bg-accent/10 transition-colors"
+                >
+                  <div>
+                    <div class="text-xs font-medium">{{ stageLabels[stage] || stage }}</div>
+                    <div class="text-[10px] text-muted-foreground font-mono">{{ stage }}</div>
+                  </div>
+                  <div>
+                    <input
+                      v-model="stageEdits[stage]"
+                      class="w-full rounded border bg-background px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+                      :placeholder="stageModelConfig.default_model"
+                    />
+                  </div>
+                  <div class="text-xs font-mono text-muted-foreground pl-2">
+                    {{ stageEdits[stage] || stageModelConfig.default_model }}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="rounded-xl border bg-accent/20 p-3 text-xs text-muted-foreground space-y-1">
+              <p><strong>Tip:</strong> Use cheaper models for simple stages to reduce cost.</p>
+              <p>Example: Set <span class="font-mono">refiner</span>, <span class="font-mono">chat</span>, <span class="font-mono">review</span> to <span class="font-mono">gpt-4o-mini</span> and keep <span class="font-mono">codegen</span> on the default model.</p>
+            </div>
+          </div>
+          <div v-else class="py-8 text-center text-xs text-muted-foreground">Loading model configuration…</div>
+        </template>
+
         <!-- Cost Monitor Tab -->
         <template v-if="activeTab === 'cost'">
           <div class="space-y-1">
@@ -482,7 +559,7 @@
 
 <script setup lang="ts">
 import { ref, watch, onMounted, computed } from "vue";
-import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2, Cpu, HardDrive, Check, DollarSign } from "@lucide/vue";
+import { ArrowLeft, Search, Loader2, Sparkles, Database, Upload, FolderSearch, FileCode, Settings2, Library, Trash2, Cpu, HardDrive, Check, DollarSign, Layers } from "@lucide/vue";
 import { useSdkManager } from "~/composables/useSdkManager";
 import { useRuntimeConfig } from "#app";
 
@@ -507,7 +584,7 @@ const fileInput = ref<HTMLInputElement | null>(null);
 
 // Device Data tab state
 const config = useRuntimeConfig();
-const deviceApiBase = config.public.apiBase as string;
+const apiBase = config.public.apiBase as string;
 const devicePath = ref("");
 const deviceImporting = ref(false);
 const deviceAvailable = ref<string[]>([]);
@@ -531,8 +608,67 @@ const tabs = [
   { id: "profile", label: "Active Profile", icon: FileCode },
   { id: "library", label: "Profile Library", icon: Library },
   { id: "reference", label: "Reference Analyzer", icon: Settings2 },
+  { id: "models", label: "Model Routing", icon: Layers },
   { id: "cost", label: "Cost Monitor", icon: DollarSign },
 ];
+
+// ─── Model-per-stage config ─────────────────────────────────────
+interface StageModelConfig {
+  default_model: string;
+  provider: string;
+  stages: Record<string, string | null>;
+}
+
+const stageModelConfig = ref<StageModelConfig | null>(null);
+const stageEdits = ref<Record<string, string>>({});
+const modelSaving = ref(false);
+const modelSaved = ref(false);
+
+const stageLabels: Record<string, string> = {
+  refiner: "Requirements Refiner",
+  hardware: "Hardware Assignment",
+  software_arch: "Software Architecture",
+  software_detailed: "Detailed Design",
+  codegen: "Code Generation (main)",
+  codegen_mock: "Code Generation (mocks)",
+  codegen_test: "Code Generation (tests)",
+  codegen_prod: "Code Generation (production)",
+  review: "AI Review",
+  fix_loop: "Compiler Fix Loop",
+  chat: "Chat Assistant",
+  profile_generation: "Profile Generator",
+};
+
+async function loadStageModels() {
+  try {
+    const res = await fetch(`${apiBase}/api/cost/stage-models`);
+    if (res.ok) {
+      stageModelConfig.value = await res.json();
+      stageEdits.value = {};
+      for (const [stage, model] of Object.entries(stageModelConfig.value!.stages)) {
+        stageEdits.value[stage] = (model as string) || "";
+      }
+    }
+  } catch {}
+}
+
+async function saveStageModels() {
+  modelSaving.value = true;
+  modelSaved.value = false;
+  try {
+    const res = await fetch(`${apiBase}/api/cost/stage-models`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ stages: stageEdits.value }),
+    });
+    if (res.ok) {
+      stageModelConfig.value = await res.json();
+      modelSaved.value = true;
+      setTimeout(() => { modelSaved.value = false; }, 2000);
+    }
+  } catch {}
+  modelSaving.value = false;
+}
 
 watch(profile, (p) => {
   if (p) profileJson.value = JSON.stringify(p, null, 2);
@@ -547,6 +683,7 @@ onMounted(async () => {
   await loadProfile();
   await refreshProfiles();
   await refreshImportedDevices();
+  await loadStageModels();
 });
 
 async function loadProfile() {
@@ -569,7 +706,7 @@ async function runGenerate() {
 // Device Data functions
 async function refreshImportedDevices() {
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/imported`);
+    const res = await fetch(`${apiBase}/api/sdk/device/imported`);
     const data = await res.json();
     deviceImported.value = data.devices || [];
   } catch { /* backend not reachable */ }
@@ -580,7 +717,7 @@ async function listDevicesAtPath() {
   deviceImporting.value = true;
   deviceAvailable.value = [];
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/list-available`, {
+    const res = await fetch(`${apiBase}/api/sdk/device/list-available`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: devicePath.value }),
@@ -595,7 +732,7 @@ async function importDevice(deviceName: string = "") {
   deviceImporting.value = true;
   deviceImportResult.value = null;
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/device/import`, {
+    const res = await fetch(`${apiBase}/api/sdk/device/import`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path: devicePath.value, device_name: deviceName || deviceSelectedName.value }),
@@ -608,7 +745,7 @@ async function importDevice(deviceName: string = "") {
 
 async function browseDir(path: string) {
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/browse`, {
+    const res = await fetch(`${apiBase}/api/sdk/browse`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ path }),
@@ -631,7 +768,7 @@ function onBrowseClick(entry: any) {
 
 async function runAutoDiscovery() {
   try {
-    const res = await fetch(`${deviceApiBase}/api/sdk/discover`);
+    const res = await fetch(`${apiBase}/api/sdk/discover`);
     const data = await res.json();
     discoveredTools.value = data.tools || [];
   } catch { /* ignore */ }

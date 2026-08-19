@@ -90,6 +90,8 @@ async def approve_stage(session_id: str, stage: str):
     activity_log.step(f"Stage approved: {stage_labels.get(stage, stage)}", f"Session: {session_id[:8]}")
     await broadcast(session_id, {"type": "stage_start", "stage": stage})
 
+    state.save_snapshot()
+
     # Clear previous errors on retry
     if state.errors:
         logger.info("Clearing %d previous error(s) for retry", len(state.errors))
@@ -166,6 +168,20 @@ async def edit_stage(session_id: str, stage: str, req: EditRequest):
     setattr(state, target, req.data)
     _sessions[session_id] = state
     return {"ok": True}
+
+
+@router.post("/{session_id}/rollback/{target_stage}")
+async def rollback_stage(session_id: str, target_stage: str):
+    """Rollback workflow to a previous stage, clearing subsequent outputs."""
+    from server.activity_log import activity_log
+
+    state = _get_session(session_id)
+    if state.rollback_to(target_stage):
+        _sessions[session_id] = state
+        activity_log.step(f"Rolled back to {target_stage}", f"Session: {session_id[:8]}")
+        await broadcast(session_id, {"type": "stage_rollback", "stage": target_stage})
+        return _serialize_state(state)
+    raise HTTPException(400, f"Cannot rollback to '{target_stage}' from current stage '{state.stage.value}'")
 
 
 @router.get("/{session_id}/download")

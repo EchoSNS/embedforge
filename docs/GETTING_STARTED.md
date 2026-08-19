@@ -75,6 +75,27 @@ STM32CUBE_F4_PATH=C:/STM32CubeF4
 LOG_LEVEL=DEBUG
 ```
 
+5. (Optional) Cost control and model routing:
+
+```env
+# Set a spending budget (USD)
+EMBEDFORGE_BUDGET_USD=5.00
+
+# Route specific stages to cheaper models (JSON)
+EMBEDFORGE_STAGE_MODELS={"refiner": "gpt-4o-mini", "chat": "gpt-4o-mini"}
+
+# Override pricing for custom deployments (JSON, per 1M tokens)
+EMBEDFORGE_COST_OVERRIDES={"my-model": {"input": 2.0, "output": 8.0}}
+
+# LLM response cache size (default: 100)
+EMBEDFORGE_CACHE_SIZE=100
+
+# Restrict SDK scan to specific directories (security)
+EMBEDFORGE_SDK_ROOTS=C:/STM32CubeF4;D:/SDKs
+```
+
+See `.env.example` for all available options.
+
 ## Running
 
 ```bash
