@@ -37,7 +37,7 @@ def _walk(node, source: bytes, header_name: str, result: SDKAnalysisResult) -> N
             _try_extract_function_decl(child, source, header_name, result)
         elif child.type == "type_definition":
             _try_extract_typedef(child, source, header_name, result)
-        elif child.type == "preproc_def":
+        elif child.type in ("preproc_def", "preproc_function_def"):
             _try_extract_macro(child, source, result)
         elif child.type in ("preproc_ifdef", "preproc_if", "preproc_else", "translation_unit"):
             _walk(child, source, header_name, result)

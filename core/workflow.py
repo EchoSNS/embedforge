@@ -199,8 +199,11 @@ class WorkflowEngine:
 
         rag_context = self._get_rag_context(state.user_input)
 
+        from core.prompt_guard import wrap_user_content
+        wrapped_input = wrap_user_content(state.user_input, label="REQUIREMENT")
+
         user_prompt = (
-            f"USER REQUIREMENT:\n{state.user_input}\n\n"
+            f"{wrapped_input}\n\n"
             f"BOARD: {state.board_name}\n"
             f"MCU CAPABILITIES:\n{json.dumps(state.sdk_capabilities, indent=2)}\n"
             f"{profile_context}\n"
