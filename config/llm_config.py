@@ -84,11 +84,27 @@ def get_llm(
     When session_id/stage are provided, auto-attaches a CostTrackingCallback
     so every invocation is automatically metered.
 
+    When EMBEDFORGE_STAGE_MODELS is set, overrides the deployment/model
+    per stage (e.g. use a cheaper model for refiner).
+
     Raises:
         ValueError: if settings are invalid or provider unsupported.
     """
     if settings is None:
         settings = LLMSettings.from_env()
+
+    # Stage-based model override
+    if stage:
+        from config.settings import AppSettings
+        stage_models = AppSettings().stage_models
+        if stage in stage_models:
+            settings = LLMSettings(
+                provider=settings.provider,
+                api_key=settings.api_key,
+                model=stage_models[stage],
+                endpoint=settings.endpoint,
+                api_version=settings.api_version,
+            )
 
     if not settings.is_valid:
         raise ValueError(

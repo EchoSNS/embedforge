@@ -4,10 +4,22 @@ Application Settings — centralized configuration for EmbedForge.
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+
+def _parse_stage_models() -> dict:
+    """Parse EMBEDFORGE_STAGE_MODELS env var (JSON mapping stage→deployment name)."""
+    raw = os.getenv("EMBEDFORGE_STAGE_MODELS", "")
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 
 @dataclass
@@ -23,6 +35,7 @@ class AppSettings:
     allowed_sdk_roots: list = field(default_factory=lambda: [
         p.strip() for p in os.getenv("EMBEDFORGE_SDK_ROOTS", "").split(";") if p.strip()
     ])
+    stage_models: dict = field(default_factory=lambda: _parse_stage_models())
 
     @property
     def plugins_dir(self) -> Path:

@@ -41,6 +41,39 @@ export interface GlobalCostSummary {
   recent_calls: RecentCall[];
 }
 
+export interface TimeBucket {
+  timestamp: number;
+  label: string;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+  by_stage: Record<string, number>;
+}
+
+export interface StageTotal {
+  stage: string;
+  cost_usd: number;
+  input_tokens: number;
+  output_tokens: number;
+  calls: number;
+  avg_duration_ms: number;
+}
+
+export interface BudgetStatus {
+  budget_usd: number | null;
+  spent_usd: number;
+  remaining_usd: number | null;
+  percent_used: number | null;
+  exceeded: boolean;
+}
+
+export interface MetricsData {
+  time_series: TimeBucket[];
+  stage_totals: StageTotal[];
+  budget: BudgetStatus;
+}
+
 export function useCostTracker(sessionId?: string) {
   const config = useRuntimeConfig();
   const apiBase = config.public.apiBase as string;
@@ -48,6 +81,7 @@ export function useCostTracker(sessionId?: string) {
   const globalSummary = ref<GlobalCostSummary | null>(null);
   const sessionCost = ref<SessionCost | null>(null);
   const recentCalls = ref<RecentCall[]>([]);
+  const metrics = ref<MetricsData | null>(null);
   const loading = ref(false);
 
   let pollInterval: ReturnType<typeof setInterval> | null = null;
@@ -74,9 +108,29 @@ export function useCostTracker(sessionId?: string) {
     } catch {}
   }
 
+  async function fetchMetrics(bucketMinutes = 60) {
+    try {
+      const res = await fetch(`${apiBase}/api/cost/metrics?bucket_minutes=${bucketMinutes}`);
+      if (res.ok) metrics.value = await res.json();
+    } catch {}
+  }
+
+  async function setBudget(budgetUsd: number | null) {
+    try {
+      const res = await fetch(`${apiBase}/api/cost/budget`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ budget_usd: budgetUsd }),
+      });
+      if (res.ok && metrics.value) {
+        metrics.value.budget = await res.json();
+      }
+    } catch {}
+  }
+
   async function refresh() {
     loading.value = true;
-    await Promise.all([fetchGlobal(), fetchSession(), fetchRecent()]);
+    await Promise.all([fetchGlobal(), fetchSession(), fetchRecent(), fetchMetrics()]);
     loading.value = false;
   }
 
@@ -99,8 +153,10 @@ export function useCostTracker(sessionId?: string) {
     globalSummary,
     sessionCost,
     recentCalls,
+    metrics,
     loading,
     refresh,
+    setBudget,
     startPolling,
     stopPolling,
   };

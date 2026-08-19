@@ -88,9 +88,16 @@ class WorkflowEngine:
 
     def initialize_state(self, user_input: str, board_name: str) -> WorkflowState:
         """Create initial workflow state from user input and board selection."""
-        logger.info("Initializing workflow state: board=%s, input=%s", board_name, user_input[:80])
+        from core.prompt_guard import sanitize_user_input, detect_injection
+
+        detections = detect_injection(user_input)
+        if detections:
+            logger.warning("Prompt injection attempt detected in user input: %s", [d[0] for d in detections])
+
+        sanitized_input = sanitize_user_input(user_input)
+        logger.info("Initializing workflow state: board=%s, input=%s", board_name, sanitized_input[:80])
         state = WorkflowState(
-            user_input=user_input,
+            user_input=sanitized_input,
             board_name=board_name,
             stage=WorkflowStage.CLARIFIER,
         )
@@ -343,7 +350,14 @@ class WorkflowEngine:
 
     def _invoke_llm(self, system_prompt: str, user_prompt: str, stage: str = "unknown") -> str:
         from server.activity_log import activity_log
+        from core.llm_cache import llm_cache
         import time
+
+        # Check cache first (skips LLM call + cost if hit)
+        cached = llm_cache.get(system_prompt, user_prompt)
+        if cached is not None:
+            activity_log.ai("Cache HIT — skipping LLM call", f"Stage: {stage}")
+            return cached
 
         activity_log.ai("Sending prompt to LLM…", f"System: {system_prompt[:80]}…")
         t0 = time.time()
@@ -357,6 +371,8 @@ class WorkflowEngine:
         elapsed = time.time() - t0
         content = response.content
         activity_log.ai(f"LLM responded in {elapsed:.1f}s", f"{len(content)} chars")
+
+        llm_cache.put(system_prompt, user_prompt, content)
         return content
 
     def _invoke_llm_structured(self, system_prompt: str, user_prompt: str, schema, stage: str = "unknown") -> Dict[str, Any]:

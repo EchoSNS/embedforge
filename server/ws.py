@@ -37,7 +37,10 @@ async def _handle_chat(session_id: str, message: str, websocket: WebSocket) -> N
     logger.info("Chat message received: session=%s, len=%d", session_id, len(message))
     try:
         from config.llm_config import get_llm
+        from core.prompt_guard import sanitize_user_input
         from langchain_core.messages import HumanMessage, SystemMessage
+
+        message = sanitize_user_input(message)
 
         # Get session context if available
         context = ""

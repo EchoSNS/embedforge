@@ -59,6 +59,16 @@ def _estimate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     return (input_tokens * pricing["input"] + output_tokens * pricing["output"]) / 1_000_000
 
 
+def _parse_budget() -> Optional[float]:
+    raw = os.getenv("EMBEDFORGE_BUDGET_USD", "")
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        return None
+
+
 @dataclass
 class LLMCallRecord:
     """Single LLM invocation record."""
@@ -100,6 +110,19 @@ class CostTracker:
         self._lock = threading.Lock()
         self._records: List[LLMCallRecord] = []
         self._sessions: Dict[str, SessionCostSummary] = {}
+        self._budget_usd: Optional[float] = _parse_budget()
+        self._budget_callbacks: List[Any] = []
+
+    def on_budget_exceeded(self, callback) -> None:
+        self._budget_callbacks.append(callback)
+
+    @property
+    def budget_usd(self) -> Optional[float]:
+        return self._budget_usd
+
+    @budget_usd.setter
+    def budget_usd(self, value: Optional[float]) -> None:
+        self._budget_usd = value
 
     def record_call(
         self,
@@ -136,6 +159,16 @@ class CostTracker:
             stage_data["output_tokens"] += output_tokens
             stage_data["cost_usd"] += cost
             stage_data["calls"] += 1
+
+            # Budget alert check
+            if self._budget_usd is not None:
+                total_spent = sum(s.total_cost_usd for s in self._sessions.values())
+                if total_spent >= self._budget_usd:
+                    for cb in self._budget_callbacks:
+                        try:
+                            cb(total_spent, self._budget_usd)
+                        except Exception:
+                            pass
 
         return record
 
@@ -194,6 +227,82 @@ class CostTracker:
                 }
                 for r in self._records[-limit:]
             ]
+
+    def get_time_series(self, bucket_minutes: int = 60) -> List[Dict[str, Any]]:
+        """Aggregate records into time buckets for charting."""
+        from datetime import datetime, timezone
+        with self._lock:
+            if not self._records:
+                return []
+
+            buckets: Dict[int, Dict[str, Any]] = {}
+            bucket_sec = bucket_minutes * 60
+
+            for r in self._records:
+                key = int(r.timestamp // bucket_sec) * bucket_sec
+                if key not in buckets:
+                    buckets[key] = {
+                        "timestamp": key,
+                        "cost_usd": 0.0,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "calls": 0,
+                        "by_stage": defaultdict(float),
+                    }
+                b = buckets[key]
+                b["cost_usd"] += r.cost_usd
+                b["input_tokens"] += r.input_tokens
+                b["output_tokens"] += r.output_tokens
+                b["calls"] += 1
+                b["by_stage"][r.stage] += r.cost_usd
+
+            result = []
+            for key in sorted(buckets):
+                b = buckets[key]
+                result.append({
+                    "timestamp": b["timestamp"],
+                    "label": datetime.fromtimestamp(b["timestamp"], tz=timezone.utc).strftime("%H:%M"),
+                    "cost_usd": round(b["cost_usd"], 6),
+                    "input_tokens": b["input_tokens"],
+                    "output_tokens": b["output_tokens"],
+                    "calls": b["calls"],
+                    "by_stage": dict(b["by_stage"]),
+                })
+            return result
+
+    def get_stage_totals(self) -> List[Dict[str, Any]]:
+        """Per-stage totals across all sessions for pie/bar charts."""
+        with self._lock:
+            stage_agg: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+                "cost_usd": 0.0, "input_tokens": 0, "output_tokens": 0,
+                "calls": 0, "avg_duration_ms": 0.0, "_durations": [],
+            })
+            for r in self._records:
+                s = stage_agg[r.stage]
+                s["cost_usd"] += r.cost_usd
+                s["input_tokens"] += r.input_tokens
+                s["output_tokens"] += r.output_tokens
+                s["calls"] += 1
+                s["_durations"].append(r.duration_ms)
+
+            result = []
+            for stage, s in sorted(stage_agg.items()):
+                durations = s.pop("_durations")
+                s["avg_duration_ms"] = round(sum(durations) / len(durations), 1) if durations else 0
+                s["cost_usd"] = round(s["cost_usd"], 6)
+                result.append({"stage": stage, **s})
+            return result
+
+    def get_budget_status(self) -> Dict[str, Any]:
+        with self._lock:
+            total_spent = sum(s.total_cost_usd for s in self._sessions.values())
+            return {
+                "budget_usd": self._budget_usd,
+                "spent_usd": round(total_spent, 6),
+                "remaining_usd": round(self._budget_usd - total_spent, 6) if self._budget_usd else None,
+                "percent_used": round((total_spent / self._budget_usd) * 100, 1) if self._budget_usd else None,
+                "exceeded": total_spent >= self._budget_usd if self._budget_usd else False,
+            }
 
 
 # Singleton
