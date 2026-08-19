@@ -197,7 +197,7 @@ const stageLoading = ref(false);
 const thinkingStage = ref(0);
 let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
-const { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, getDownloadUrl, fetchBoards } = useWorkflow();
+const { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, getDownloadUrl, fetchBoards } = useWorkflow();
 
 const examples = [
   "LED blink on PA5 at 1Hz using TIM2",
@@ -270,6 +270,8 @@ async function editStage(stage: string, data: any) {
 }
 
 async function retryStage(stage: string) {
+  // Rollback to clear the failed output, then re-run
+  await rollback(stage);
   await approveStage(stage);
 }
 

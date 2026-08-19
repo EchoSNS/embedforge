@@ -20,8 +20,8 @@ from server.ws import broadcast
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# In-memory session store (swap for Redis/DB in production)
-_sessions: Dict[str, WorkflowState] = {}
+from server.session_store import SessionStore
+_sessions = SessionStore()
 
 
 class StartRequest(BaseModel):
@@ -62,6 +62,12 @@ async def start_workflow(req: StartRequest):
     _sessions[state.session_id] = state
     await broadcast(state.session_id, {"type": "stage_complete", "stage": "refiner"})
     return {"session_id": state.session_id, "stage": state.stage.value}
+
+
+@router.get("/sessions/list")
+async def list_sessions(limit: int = 50):
+    """Return recent sessions metadata."""
+    return _sessions.list_sessions(min(limit, 200))
 
 
 @router.get("/{session_id}/state")
@@ -185,7 +191,7 @@ async def rollback_stage(session_id: str, target_stage: str):
 
 
 @router.get("/{session_id}/download")
-async def download_code(session_id: str):
+async def download_code(session_id: str, include_build: bool = False):
     from fastapi.responses import StreamingResponse
 
     state = _get_session(session_id)
@@ -196,6 +202,21 @@ async def download_code(session_id: str):
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         for name, content in state.generated_code.items():
             zf.writestr(name, content)
+
+        if include_build:
+            from core.build_templates import generate_cmake, generate_makefile
+            registry = get_registry()
+            source_files = [n for n in state.generated_code if n.endswith(".c")]
+            try:
+                board = registry.get_board_template(state.board_name)
+                inc_paths = board.get_sdk_include_paths()
+                mcu = board.get_config().mcu
+            except Exception:
+                inc_paths, mcu = [], ""
+
+            zf.writestr("CMakeLists.txt", generate_cmake("firmware", source_files, mcu, inc_paths))
+            zf.writestr("Makefile", generate_makefile("firmware", source_files, mcu, inc_paths))
+
     buf.seek(0)
 
     return StreamingResponse(

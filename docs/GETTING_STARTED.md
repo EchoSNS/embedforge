@@ -92,6 +92,9 @@ EMBEDFORGE_CACHE_SIZE=100
 
 # Restrict SDK scan to specific directories (security)
 EMBEDFORGE_SDK_ROOTS=C:/STM32CubeF4;D:/SDKs
+
+# Max user input length before truncation (default: 5000)
+# EMBEDFORGE_MAX_INPUT_LENGTH=5000
 ```
 
 See `.env.example` for all available options.

@@ -28,6 +28,9 @@ models/
 # RAG data
 rag_data/
 
+# Session database
+sessions.db
+
 # OS
 .DS_Store
 Thumbs.db

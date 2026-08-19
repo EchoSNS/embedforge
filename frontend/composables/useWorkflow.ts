@@ -100,6 +100,16 @@ export function useWorkflow() {
     return res.json();
   }
 
+  async function rollback(targetStage: string) {
+    if (!currentSession.value) return null;
+    const sid = currentSession.value.session_id;
+    const res = await fetch(`${apiBase}/api/workflow/${sid}/rollback/${targetStage}`, { method: "POST" });
+    if (res.ok) {
+      currentSession.value = await res.json();
+    }
+    return currentSession.value;
+  }
+
   function getDownloadUrl() {
     if (!currentSession.value) return "";
     return `${apiBase}/api/workflow/${currentSession.value.session_id}/download`;
@@ -115,5 +125,5 @@ export function useWorkflow() {
     return `${apiBase}/api/workflow/${currentSession.value.session_id}/download/full`;
   }
 
-  return { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, getDownloadUrl, getStageDownloadUrl, getFullPackageDownloadUrl, fetchBoards };
+  return { currentSession, sessionList, startSession, loadSession, approve, edit, validate, analyze, build, rollback, getDownloadUrl, getStageDownloadUrl, getFullPackageDownloadUrl, fetchBoards };
 }

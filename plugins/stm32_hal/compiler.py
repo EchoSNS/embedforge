@@ -100,17 +100,25 @@ class ARMGCCCompiler(CompilerBackend):
         logger.info(f"Compiling: {command_str}")
 
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=60,
-            )
-            errors = self.parse_errors(result.stderr) if result.returncode != 0 else []
-            warnings = self._parse_warnings(result.stderr)
+            from core.build_sandbox import sandboxed_run
+            r = sandboxed_run(cmd, timeout=60)
+
+            if r["timed_out"]:
+                return CompilationResult(
+                    success=False,
+                    stderr="Compilation timed out (60s)",
+                    errors=({"message": "Compilation timed out"},),
+                    command=command_str,
+                )
+
+            errors = self.parse_errors(r["stderr"]) if r["returncode"] != 0 else []
+            warnings = self._parse_warnings(r["stderr"])
 
             return CompilationResult(
-                success=result.returncode == 0,
-                output_file=output_path if result.returncode == 0 else None,
-                stdout=result.stdout,
-                stderr=result.stderr,
+                success=r["returncode"] == 0,
+                output_file=output_path if r["returncode"] == 0 else None,
+                stdout=r["stdout"],
+                stderr=r["stderr"],
                 errors=tuple(errors),
                 warnings=tuple(warnings),
                 command=command_str,
