@@ -16,6 +16,7 @@ MANIFEST = PluginManifest(
     board_template_classes={
         "ESP32-DevKitC": "plugins.espressif_idf.boards.ESP32DevKitC",
     },
+    project_exporter_class="plugins.espressif_idf.exporter.ESPProjectExporter",
 )
 
 

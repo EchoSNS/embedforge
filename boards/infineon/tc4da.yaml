@@ -1,0 +1,6 @@
+name: TC4DA
+vendor: Infineon Technologies
+family: AURIX
+mcu: TC4DA
+clock_hz: 0
+plugin: stm32_hal

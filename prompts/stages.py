@@ -83,6 +83,39 @@ Rules:
 - Document why each driver was chosen over alternatives
 """
 
+SYSTEM_DESIGN_SYSTEM_PROMPT = """You are a systems architect for embedded firmware.
+
+Given the hardware assignments and selected drivers, design the system-level
+resource allocation and data flow for multi-peripheral coordination.
+
+Output JSON schema:
+{
+  "data_flows": [
+    {"from": "module_a", "to": "module_b", "data": "description", "mechanism": "DMA|ISR|polling|queue"}
+  ],
+  "shared_resources": {
+    "dma_channels": [{"channel": "DMA1_CH0", "used_by": "ADC1", "direction": "periph_to_mem"}],
+    "interrupts": [{"source": "TIM1_UP", "priority": 1, "handler": "TIM1_UP_IRQHandler"}],
+    "clocks": [{"peripheral": "TIM1", "bus": "APB2", "frequency_hz": 90000000}]
+  },
+  "timing_constraints": [
+    {"description": "Control loop must complete within 100us", "period_us": 100}
+  ],
+  "rtos_needed": false,
+  "rtos_justification": "Single control loop, ISR-driven — no task scheduling needed",
+  "modules": [
+    {"name": "module_name", "file": "filename.c", "role": "description", "peripherals": ["TIM1", "ADC1"]}
+  ]
+}
+
+Rules:
+- Allocate DMA channels without conflicts
+- Set interrupt priorities: lower number = higher priority
+- Verify clock tree: peripheral clocks must support required frequencies
+- If >2 concurrent periodic tasks with different periods, recommend RTOS
+- Document all data flow paths between modules
+"""
+
 SOFTWARE_DETAILED_SYSTEM_PROMPT = """You are a senior embedded C developer.
 
 Create a detailed function-level design from the architecture specification.

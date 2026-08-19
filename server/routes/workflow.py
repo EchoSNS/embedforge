@@ -117,6 +117,7 @@ async def approve_stage(session_id: str, stage: str):
     stage_labels = {
         "refiner": "Requirements Refinement",
         "hardware": "Hardware Design",
+        "system_design": "System Design",
         "software_arch": "Software Architecture",
         "software_detailed": "Detailed Design",
         "codegen": "Code Generation",
@@ -141,6 +142,9 @@ async def approve_stage(session_id: str, stage: str):
         elif stage == "hardware" or state.stage == WorkflowStage.HARDWARE:
             activity_log.ai("AI is assigning peripherals and pins…")
             return engine.run_hardware(state)
+        elif stage == "system_design" or state.stage == WorkflowStage.SYSTEM_DESIGN:
+            activity_log.ai("AI is designing system-level resource allocation…")
+            return engine.run_system_design(state)
         elif stage == "software_arch" or state.stage == WorkflowStage.SOFTWARE_ARCH:
             activity_log.ai("AI is selecting SDK drivers…")
             return engine.run_software_arch(state)
@@ -252,6 +256,43 @@ async def download_code(session_id: str, include_build: bool = False):
         buf,
         media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=embedforge_output.zip"},
+    )
+
+
+@router.get("/{session_id}/export-project")
+async def export_project(session_id: str):
+    """Export generated code as a buildable vendor-specific project ZIP."""
+    from fastapi.responses import StreamingResponse
+    from core.project_packager import package_project
+    from core.board_registry import get_board_registry
+
+    state = _get_session(session_id)
+    if not state.generated_code:
+        raise HTTPException(404, "No generated code available")
+
+    registry = get_registry()
+
+    # Ensure correct plugin is active
+    board_reg = get_board_registry()
+    board_data = board_reg.get_board(state.board_name)
+    if board_data and board_data.get("plugin"):
+        target_plugin = board_data["plugin"]
+        if target_plugin in registry._plugins:
+            registry.activate(target_plugin)
+
+    zip_bytes = package_project(
+        registry=registry,
+        generated_code=state.generated_code,
+        board_name=state.board_name,
+        user_input=state.user_input,
+        requirements=state.requirements,
+    )
+
+    safe_name = state.board_name.lower().replace(" ", "-").replace("/", "_")
+    return StreamingResponse(
+        io.BytesIO(zip_bytes),
+        media_type="application/zip",
+        headers={"Content-Disposition": f"attachment; filename={safe_name}_project.zip"},
     )
 
 
@@ -462,6 +503,7 @@ def _serialize_state(state: WorkflowState) -> Dict[str, Any]:
         "board_name": state.board_name,
         "requirements": state.requirements,
         "hardware_spec": state.hardware_spec,
+        "system_design": state.system_design,
         "software_arch": state.software_arch,
         "software_detailed": state.software_detailed,
         "generated_code": state.generated_code,

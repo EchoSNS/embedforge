@@ -14,6 +14,7 @@ MANIFEST = PluginManifest(
     board_template_classes={
         "AURIX-TC4D7-LiteKit": "plugins.infineon_aurix.boards.TC4D7LiteKit",
     },
+    project_exporter_class="plugins.infineon_aurix.exporter.AurixProjectExporter",
 )
 
 def register(registry):

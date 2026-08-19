@@ -353,6 +353,38 @@ class BoardTemplate(ABC):
         """Return linker script content, or None if not applicable."""
 
 
+class ProjectExporter(ABC):
+    """
+    Exports generated code into a vendor-specific buildable project.
+
+    Each vendor plugin provides an exporter that transforms the universal
+    file set into its SDK's expected project structure.
+    """
+
+    @abstractmethod
+    def export(
+        self,
+        production_files: Dict[str, str],
+        test_files: Dict[str, str],
+        mock_files: Dict[str, str],
+        board_config: BoardConfig,
+        output_dir: str,
+    ) -> Dict[str, str]:
+        """
+        Export files into a buildable project structure.
+
+        Returns the complete file set (path → content) for the project.
+        """
+
+    @abstractmethod
+    def get_build_system(self) -> str:
+        """Return build system type: 'cmake', 'make', 'meson', 'ads', etc."""
+
+    @abstractmethod
+    def get_project_files(self, board_config: BoardConfig) -> Dict[str, str]:
+        """Return build system config files (CMakeLists.txt, Makefile, etc.)."""
+
+
 # =============================================================================
 # Plugin Manifest & Registry
 # =============================================================================
@@ -372,6 +404,7 @@ class PluginManifest:
     compiler_backend_class: str
     architecture_rules_class: str
     board_template_classes: Dict[str, str] = field(default_factory=dict)
+    project_exporter_class: str = ""
 
 
 class PluginRegistry:
@@ -415,6 +448,12 @@ class PluginRegistry:
 
     def get_architecture_rules(self) -> ArchitectureRulePack:
         return self._resolve("architecture_rules_class")
+
+    def get_project_exporter(self) -> Optional[ProjectExporter]:
+        manifest = self._require_active()
+        if not manifest.project_exporter_class:
+            return None
+        return self._resolve("project_exporter_class")
 
     def get_board_template(self, board_name: str) -> BoardTemplate:
         manifest = self._require_active()

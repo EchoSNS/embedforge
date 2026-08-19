@@ -17,12 +17,13 @@ EmbedForge is a multi-stage agentic AI pipeline that generates embedded C firmwa
 │                  Nuxt 3 Dashboard (frontend/)                  │
 ├─────────────────────────────────────────────────────────────┤
 │                 FastAPI Backend (server/)                       │
-│  ┌──────┐  ┌────────┐  ┌──────┐  ┌───────┐  ┌──────────┐ │
-│  │Refine│→ │Hardware│→ │SW Arc│→ │Detailed│→ │  CodeGen │ │
-│  └──────┘  └────────┘  └──────┘  └───────┘  └──────────┘ │
+│  ┌──────┐ ┌────────┐ ┌───────┐ ┌──────┐ ┌───────┐ ┌─────┐│
+│  │Refine│→│Hardware│→│SysDsgn│→│SW Arc│→│Detailed│→│Code ││
+│  └──────┘ └────────┘ └───────┘ └──────┘ └───────┘ └─────┘│
 ├─────────────────────────────────────────────────────────────┤
 │                     Core Services Layer                      │
 │  DriverCatalog · PinValidator · Compiler · SDKAnalyzer      │
+│  ProjectPackager · SystemDesigner · TDDGenerator             │
 │  ReferenceAnalyzer · TDDGenerator · AIReviewer              │
 │  StaticAnalyzer · FlashService                              │
 ├─────────────────────────────────────────────────────────────┤

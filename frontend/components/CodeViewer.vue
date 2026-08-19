@@ -46,10 +46,17 @@
     <div class="border-t p-3 flex gap-2">
       <button
         class="flex-1 flex items-center justify-center gap-1.5 rounded-lg bg-primary py-2 text-sm font-medium text-primary-foreground hover:opacity-90 transition-all duration-200 active:scale-[0.98]"
-        @click="downloadAll"
+        @click="exportProject"
       >
         <Download class="h-3.5 w-3.5" />
-        Download All
+        Export Project
+      </button>
+      <button
+        class="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs hover:bg-accent transition-all duration-200 active:scale-[0.98]"
+        @click="downloadAll"
+      >
+        <Download class="h-3 w-3" />
+        Raw Files
       </button>
       <button
         class="flex items-center gap-1.5 rounded-lg border px-4 py-2 text-sm hover:bg-accent transition-all duration-200 active:scale-[0.98]"
@@ -154,6 +161,12 @@ function copyFile() {
 function downloadAll() {
   if (props.sessionId) {
     window.open(`${config.public.apiBase}/api/workflow/${props.sessionId}/download`);
+  }
+}
+
+function exportProject() {
+  if (props.sessionId) {
+    window.open(`${config.public.apiBase}/api/workflow/${props.sessionId}/export-project`);
   }
 }
 </script>

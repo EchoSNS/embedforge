@@ -21,6 +21,7 @@ MANIFEST = PluginManifest(
     board_template_classes={
         "NUCLEO-F446RE": "plugins.stm32_hal.boards.NucleoF446RE",
     },
+    project_exporter_class="plugins.stm32_hal.exporter.STM32ProjectExporter",
 )
 
 

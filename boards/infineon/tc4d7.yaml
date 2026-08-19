@@ -1,0 +1,10 @@
+name: TC4D7
+vendor: Infineon Technologies
+family: AURIX
+mcu: TC4DA
+clock_hz: 0
+plugin: stm32_hal
+onboard:
+  led: {pin: P13.0, label: LED, active: high}
+  button: {pin: P14.3, label: BTN, active: low}
+  vcp: {tx: P14.0, rx: P14.1, peripheral: UART0, baud: 115200}

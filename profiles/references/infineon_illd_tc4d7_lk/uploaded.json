@@ -1,0 +1,116 @@
+{
+  "files_analyzed": 8,
+  "includes": [
+    "Bsp.h",
+    "IfxCpu.h",
+    "IfxPort.h",
+    "IfxWtu.h",
+    "Ifx_Cfg.h",
+    "Ifx_Types.h",
+    "pin.h"
+  ],
+  "functions_defined": [
+    {
+      "name": "initLED",
+      "return_type": "void",
+      "file": "Blinky_LED.c"
+    },
+    {
+      "name": "blinkLED",
+      "return_type": "void",
+      "file": "Blinky_LED.c"
+    },
+    {
+      "name": "core0_main",
+      "return_type": "void",
+      "file": "Cpu0_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu0_Main.c"
+    },
+    {
+      "name": "core1_main",
+      "return_type": "void",
+      "file": "Cpu1_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu1_Main.c"
+    },
+    {
+      "name": "core2_main",
+      "return_type": "void",
+      "file": "Cpu2_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu2_Main.c"
+    },
+    {
+      "name": "core3_main",
+      "return_type": "void",
+      "file": "Cpu3_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu3_Main.c"
+    },
+    {
+      "name": "core4_main",
+      "return_type": "void",
+      "file": "Cpu4_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu4_Main.c"
+    },
+    {
+      "name": "core5_main",
+      "return_type": "void",
+      "file": "Cpu5_Main.c"
+    },
+    {
+      "name": "while",
+      "return_type": "",
+      "file": "Cpu5_Main.c"
+    }
+  ],
+  "functions_called": [
+    "Copyright",
+    "IfxCpu_enableInterrupts",
+    "IfxPort_setPinHigh",
+    "IfxPort_setPinModeOutput",
+    "IfxPort_togglePin",
+    "IfxStm_getTicksFromMilliseconds",
+    "IfxWtu_disableCpuWatchdog",
+    "IfxWtu_disableSystemWatchdog",
+    "IfxWtu_getCpuWatchdogPassword",
+    "IfxWtu_getSystemWatchdogPassword",
+    "and",
+    "between",
+    "blinkLED",
+    "core0_main",
+    "core1_main",
+    "core2_main",
+    "core3_main",
+    "core4_main",
+    "core5_main",
+    "initLED",
+    "license",
+    "state",
+    "waitTime"
+  ],
+  "peripherals_used": [],
+  "patterns": {
+    "has_init_pattern": true,
+    "init_functions": [
+      "initLED"
+    ]
+  }
+}

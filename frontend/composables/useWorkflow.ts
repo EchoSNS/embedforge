@@ -14,6 +14,7 @@ export interface WorkflowState {
   board_name: string;
   requirements: Record<string, any>;
   hardware_spec: Record<string, any>;
+  system_design: Record<string, any>;
   software_arch: Record<string, any>;
   software_detailed: Record<string, any>;
   generated_code: Record<string, string>;

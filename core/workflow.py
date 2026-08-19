@@ -32,6 +32,7 @@ class WorkflowStage(Enum):
     CLARIFIER = "clarifier"
     REFINER = "refiner"
     HARDWARE = "hardware"
+    SYSTEM_DESIGN = "system_design"
     SOFTWARE_ARCH = "software_architecture"
     SOFTWARE_DETAILED = "software_detailed"
     CODEGEN = "codegen"
@@ -52,6 +53,7 @@ class WorkflowState:
     # Stage outputs (JSON-serializable dicts)
     requirements: Dict[str, Any] = field(default_factory=dict)
     hardware_spec: Dict[str, Any] = field(default_factory=dict)
+    system_design: Dict[str, Any] = field(default_factory=dict)
     software_arch: Dict[str, Any] = field(default_factory=dict)
     software_detailed: Dict[str, Any] = field(default_factory=dict)
     generated_code: Dict[str, str] = field(default_factory=dict)
@@ -251,8 +253,25 @@ class WorkflowEngine:
         state.hardware_spec = result
         state.hardware_spec = self._validate_hardware_output(state.hardware_spec, state.requirements)
         state.pin_context = pin_context
-        state.stage = WorkflowStage.SOFTWARE_ARCH
+        state.stage = WorkflowStage.SYSTEM_DESIGN
         state.history.append({"stage": "hardware", "timestamp": datetime.utcnow().isoformat()})
+        return state
+
+    def run_system_design(self, state: WorkflowState) -> WorkflowState:
+        """Allocate shared resources and design data flows between peripherals."""
+        logger.info("Running system design stage for session %s", state.session_id)
+        from prompts.stages import SYSTEM_DESIGN_SYSTEM_PROMPT
+
+        user_prompt = (
+            f"REQUIREMENTS:\n{json.dumps(state.requirements, indent=2)}\n\n"
+            f"HARDWARE SPEC:\n{json.dumps(state.hardware_spec, indent=2)}\n\n"
+            f"Design the system-level resource allocation and data flows."
+        )
+
+        result = self._invoke_llm(SYSTEM_DESIGN_SYSTEM_PROMPT, user_prompt)
+        state.system_design = self._parse_json_response(result)
+        state.stage = WorkflowStage.SOFTWARE_ARCH
+        state.history.append({"stage": "system_design", "timestamp": datetime.utcnow().isoformat()})
         return state
 
     def run_software_arch(self, state: WorkflowState) -> WorkflowState:

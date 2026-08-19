@@ -227,7 +227,8 @@ function downloadFullPackage() {
 
 const stages = [
   { key: "requirements", label: "Requirements", description: "Review the AI-refined requirements before proceeding", dataKey: "requirements", nextApprove: "hardware", icon: FileText },
-  { key: "hardware", label: "Hardware Design", description: "Assigning peripherals, pins, and clocks", dataKey: "hardware_spec", nextApprove: "software_arch", icon: Cpu },
+  { key: "hardware", label: "Hardware Design", description: "Assigning peripherals, pins, and clocks", dataKey: "hardware_spec", nextApprove: "system_design", icon: Cpu },
+  { key: "system_design", label: "System Design", description: "Resource allocation, data flows, and timing constraints", dataKey: "system_design", nextApprove: "software_arch", icon: Layers },
   { key: "software_architecture", label: "Software Architecture", description: "Selecting SDK drivers and defining structure", dataKey: "software_arch", nextApprove: "software_detailed", icon: Layers },
   { key: "software_detailed", label: "Detailed Design", description: "Function-level design with SDK calls", dataKey: "software_detailed", nextApprove: "codegen", icon: Braces },
   { key: "codegen", label: "Code Generation", description: "Generating production C code via TDD", dataKey: "generated_code", nextApprove: "review", icon: Code2 },
