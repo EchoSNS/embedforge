@@ -1,23 +1,34 @@
 <template>
   <div class="flex h-full flex-col bg-card">
-    <!-- File Tabs -->
+    <!-- Category Tabs -->
+    <div class="flex border-b bg-card">
+      <button
+        v-for="cat in categories"
+        :key="cat.id"
+        class="px-3 py-2 text-[10px] font-medium transition-colors relative"
+        :class="activeCategory === cat.id ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'"
+        @click="activeCategory = cat.id; activeFile = categoryFiles[0] || ''"
+      >
+        {{ cat.label }} ({{ cat.count }})
+        <span v-if="activeCategory === cat.id" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full" />
+      </button>
+    </div>
+
+    <!-- File Tabs within category -->
     <div class="flex border-b overflow-x-auto bg-secondary/30">
       <button
-        v-for="name in fileNames"
+        v-for="name in categoryFiles"
         :key="name"
-        class="relative whitespace-nowrap px-4 py-2.5 text-xs font-medium transition-all duration-200 flex items-center gap-1.5"
+        class="relative whitespace-nowrap px-3 py-2 text-[10px] font-medium transition-all duration-200 flex items-center gap-1"
         :class="{
           'text-foreground': activeFile === name,
           'text-muted-foreground hover:text-foreground hover:bg-accent/50': activeFile !== name,
         }"
         @click="activeFile = name"
       >
-        <FileCode class="h-3 w-3" />
-        <span class="relative z-10">{{ name }}</span>
-        <span
-          v-if="activeFile === name"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary rounded-full"
-        />
+        <FileCode class="h-2.5 w-2.5" />
+        <span>{{ shortName(name) }}</span>
+        <span v-if="activeFile === name" class="absolute bottom-0 left-0 right-0 h-0.5 bg-primary/50 rounded-full" />
       </button>
     </div>
 
@@ -64,11 +75,37 @@ const props = defineProps<{
 const config = useRuntimeConfig();
 const fileNames = computed(() => Object.keys(props.files));
 const activeFile = ref(fileNames.value[0] || "");
+const activeCategory = ref("production");
 const copied = ref(false);
+
+function classifyFile(name: string): string {
+  const base = name.split("/").pop() || name;
+  if (base.startsWith("mock_")) return "mocks";
+  if (base.startsWith("test_")) return "tests";
+  return "production";
+}
+
+const categories = computed(() => {
+  const counts: Record<string, number> = { production: 0, tests: 0, mocks: 0 };
+  for (const name of fileNames.value) counts[classifyFile(name)]++;
+  return [
+    { id: "production", label: "Production", count: counts.production },
+    { id: "tests", label: "Tests", count: counts.tests },
+    { id: "mocks", label: "Mocks", count: counts.mocks },
+  ].filter(c => c.count > 0);
+});
+
+const categoryFiles = computed(() =>
+  fileNames.value.filter(n => classifyFile(n) === activeCategory.value)
+);
+
+function shortName(name: string): string {
+  return name.split("/").pop() || name;
+}
 
 watch(fileNames, (names) => {
   if (!names.includes(activeFile.value) && names.length) {
-    activeFile.value = names[0];
+    activeFile.value = names.filter(n => classifyFile(n) === activeCategory.value)[0] || names[0];
   }
 });
 
@@ -87,21 +124,21 @@ function highlightC(code: string): string {
   const lines = escaped.split("\n");
   return lines.map(line => {
     const tokens: string[] = [];
+    // Use PUA chars + alpha prefix so digit-matching regex won't corrupt indices
     const ph = (cls: string, text: string) => {
       const i = tokens.length;
       tokens.push(`<span class="${cls}">${text}</span>`);
-      return `\uE000${i}\uE001`;
+      return `\uE000T${i}T\uE001`;
     };
     let r = line;
     r = r.replace(/(\/\/.*)/g, (_, m) => ph("text-white/30 italic", m));
     r = r.replace(/(#\w+)/g, (_, m) => ph("text-violet-400", m));
     r = r.replace(/("(?:[^"\\]|\\.)*")/g, (_, m) => ph("text-green-400", m));
     r = r.replace(/(&lt;[\w./]+&gt;)/g, (_, m) => ph("text-green-400", m));
-    r = r.replace(/\b(HAL_\w+|__HAL_\w+)\b/g, (_, m) => ph("text-amber-400", m));
-    r = r.replace(/\b(void|int|uint32_t|uint16_t|uint8_t|int32_t|int16_t|int8_t|size_t|bool|char|float|double|struct|enum|typedef|static|const|volatile|extern|return|if|else|while|for|switch|case|break|default|true|false|NULL)\b/g, (_, m) => ph("text-sky-400", m));
+    r = r.replace(/\b(HAL_\w+|__HAL_\w+|Ifx\w+)\b/g, (_, m) => ph("text-amber-400", m));
+    r = r.replace(/\b(void|int|uint32_t|uint16_t|uint8_t|int32_t|int16_t|int8_t|uint32|uint16|uint8|sint32|float32|size_t|bool|boolean|char|float|double|struct|enum|typedef|static|const|volatile|extern|return|if|else|while|for|switch|case|break|default|true|false|TRUE|FALSE|NULL)\b/g, (_, m) => ph("text-sky-400", m));
     r = r.replace(/\b(0[xX][0-9a-fA-F]+[UuLl]*|[0-9]+[UuLl]*)\b/g, (_, m) => ph("text-orange-300", m));
-    // Restore tokens and strip any orphaned placeholders
-    r = r.replace(/\uE000(\d+)\uE001/g, (_, idx) => tokens[parseInt(idx)] || "");
+    r = r.replace(/\uE000T(\d+)T\uE001/g, (_, idx) => tokens[parseInt(idx)] || "");
     r = r.replace(/[\uE000\uE001]/g, "");
     return r;
   }).join("\n");

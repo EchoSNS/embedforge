@@ -22,6 +22,19 @@
           </div>
         </div>
 
+        <!-- Session Filter -->
+        <div class="space-y-2">
+          <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Session</span>
+          <select
+            v-model="sessionFilter"
+            class="w-full rounded-lg border bg-background px-2 py-1.5 text-[10px] focus:outline-none focus:ring-1 focus:ring-ring"
+            @change="refresh()"
+          >
+            <option value="">All Sessions</option>
+            <option v-for="s in sessionIds" :key="s" :value="s">{{ s.slice(0, 8) }}</option>
+          </select>
+        </div>
+
         <!-- Budget Config -->
         <div class="space-y-2">
           <span class="text-[10px] text-muted-foreground uppercase tracking-wider">Budget</span>
@@ -165,7 +178,7 @@
           <div class="rounded-xl border bg-card p-4">
             <div class="text-xs font-medium mb-3">Cost by Stage</div>
             <div v-if="stageTotals.length" class="space-y-2">
-              <div v-for="s in stageTotals" :key="s.stage" class="space-y-1">
+              <div v-for="s in filteredStageTotals" :key="s.stage" class="space-y-1">
                 <div class="flex items-center justify-between text-xs">
                   <div class="flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full" :class="stageColor(s.stage)" />
@@ -195,7 +208,7 @@
                 <span class="text-right">Avg Latency</span>
                 <span class="text-right">Tokens</span>
               </div>
-              <div v-for="s in stageTotals" :key="s.stage" class="grid grid-cols-4 gap-2 text-xs py-1">
+              <div v-for="s in filteredStageTotals" :key="s.stage" class="grid grid-cols-4 gap-2 text-xs py-1">
                 <div class="flex items-center gap-1">
                   <span class="w-1.5 h-1.5 rounded-full" :class="stageColor(s.stage)" />
                   <span class="capitalize truncate">{{ formatStage(s.stage) }}</span>
@@ -222,7 +235,7 @@
               <span class="text-right">Cost</span>
             </div>
             <div
-              v-for="(call, i) in [...recentCalls].reverse()"
+              v-for="(call, i) in [...filteredCalls].reverse()"
               :key="i"
               class="grid grid-cols-6 gap-2 text-xs py-1 hover:bg-accent/20 rounded transition-colors"
             >
@@ -286,6 +299,7 @@ import { useCostTracker, type TimeBucket, type StageTotal } from "~/composables/
 
 const bucketMinutes = ref(60);
 const budgetInput = ref<number | undefined>(undefined);
+const sessionFilter = ref("");
 
 const timeOptions = [
   { label: "5 min", value: 5 },
@@ -295,6 +309,36 @@ const timeOptions = [
 ];
 
 const { globalSummary, recentCalls, metrics, cacheStats, loading, refresh, setBudget, clearCache } = useCostTracker();
+
+const sessionIds = computed(() => {
+  const ids = new Set(recentCalls.value.map(c => c.session_id));
+  return [...ids];
+});
+
+const filteredCalls = computed(() => {
+  if (!sessionFilter.value) return recentCalls.value;
+  return recentCalls.value.filter(c => c.session_id === sessionFilter.value);
+});
+
+const filteredStageTotals = computed(() => {
+  if (!sessionFilter.value) return stageTotals.value;
+  // Recompute from filtered calls
+  const agg: Record<string, any> = {};
+  for (const c of filteredCalls.value) {
+    if (!agg[c.stage]) agg[c.stage] = { stage: c.stage, cost_usd: 0, input_tokens: 0, output_tokens: 0, calls: 0, avg_duration_ms: 0, _durations: [] };
+    const s = agg[c.stage];
+    s.cost_usd += c.cost_usd;
+    s.input_tokens += c.input_tokens;
+    s.output_tokens += c.output_tokens;
+    s.calls++;
+    s._durations.push(c.duration_ms);
+  }
+  return Object.values(agg).map((s: any) => {
+    s.avg_duration_ms = s._durations.length ? s._durations.reduce((a: number, b: number) => a + b, 0) / s._durations.length : 0;
+    delete s._durations;
+    return s;
+  }).sort((a: any, b: any) => b.cost_usd - a.cost_usd);
+});
 
 const timeSeries = computed<TimeBucket[]>(() => metrics.value?.time_series ?? []);
 const stageTotals = computed<StageTotal[]>(() =>

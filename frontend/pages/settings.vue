@@ -365,15 +365,45 @@
                         @click="devicePath = dev.source_file || ''; listDevicesAtPath()"
                       >Re-import</button>
                     </div>
-                    <!-- Pin preview -->
-                    <div v-if="devicePinsPreview && devicePinsDevice === dev.device" class="mt-2 max-h-32 overflow-y-auto rounded bg-background p-2 space-y-0.5">
-                      <div v-for="pin in devicePinsPreview.slice(0, 20)" :key="pin.pin + pin.signal"
-                        class="text-[9px] font-mono flex gap-2">
-                        <span class="text-primary w-8">{{ pin.pin }}</span>
-                        <span class="text-muted-foreground">→</span>
-                        <span>{{ pin.signal }} <span class="text-muted-foreground">(AF{{ pin.af }})</span></span>
+                    <!-- Pin explorer -->
+                    <div v-if="devicePinsPreview.length && devicePinsDevice === dev.device" class="mt-2 space-y-2">
+                      <div class="flex items-center gap-2">
+                        <input
+                          v-model="pinFilter"
+                          class="flex-1 rounded border bg-background px-2 py-1 text-[9px] focus:outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="Filter by pin, signal, or type…"
+                        />
+                        <select v-model="pinTypeFilter" class="rounded border bg-background px-1.5 py-1 text-[9px]">
+                          <option value="">All types</option>
+                          <option v-for="t in pinTypes" :key="t" :value="t">{{ t }}</option>
+                        </select>
+                        <span class="text-[9px] text-muted-foreground">{{ filteredPins.length }}/{{ devicePinsPreview.length }}</span>
                       </div>
-                      <p v-if="devicePinsPreview.length > 20" class="text-[9px] text-muted-foreground">... {{ devicePinsPreview.length - 20 }} more</p>
+                      <div class="max-h-52 overflow-y-auto rounded bg-background p-1.5">
+                        <table class="w-full text-[9px] font-mono">
+                          <thead class="sticky top-0 bg-background">
+                            <tr class="text-muted-foreground border-b">
+                              <th class="text-left py-0.5 px-1 w-16">Pin</th>
+                              <th class="text-left py-0.5 px-1">Signal</th>
+                              <th class="text-left py-0.5 px-1 w-10">AF</th>
+                              <th class="text-left py-0.5 px-1 w-16">Type</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr v-for="pin in paginatedPins" :key="pin.pin + pin.signal" class="hover:bg-accent/50">
+                              <td class="text-primary py-0.5 px-1">{{ pin.pin }}</td>
+                              <td class="py-0.5 px-1">{{ pin.signal }}</td>
+                              <td class="text-muted-foreground py-0.5 px-1">{{ pin.af >= 0 ? pin.af : '—' }}</td>
+                              <td class="text-muted-foreground py-0.5 px-1">{{ pin.type }}</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                      <div v-if="filteredPins.length > pinPageSize" class="flex items-center justify-between text-[9px]">
+                        <button class="text-primary disabled:opacity-30" :disabled="pinPage === 0" @click="pinPage--">← Prev</button>
+                        <span class="text-muted-foreground">Page {{ pinPage + 1 }}/{{ Math.ceil(filteredPins.length / pinPageSize) }}</span>
+                        <button class="text-primary disabled:opacity-30" :disabled="(pinPage + 1) * pinPageSize >= filteredPins.length" @click="pinPage++">Next →</button>
+                      </div>
                     </div>
                   </div>
                 </Transition>
@@ -723,6 +753,36 @@ const alreadyImported = ref<string[]>([]);
 const bulkProgress = ref("");
 const deviceVendorFilter = ref("All");
 
+// Pin explorer state
+const pinFilter = ref("");
+const pinTypeFilter = ref("");
+const pinPage = ref(0);
+const pinPageSize = 50;
+
+const pinTypes = computed(() => {
+  const types = new Set(devicePinsPreview.value.map((p: any) => p.type));
+  return [...types].sort();
+});
+
+const filteredPins = computed(() => {
+  let pins = devicePinsPreview.value;
+  if (pinTypeFilter.value) pins = pins.filter((p: any) => p.type === pinTypeFilter.value);
+  if (pinFilter.value) {
+    const q = pinFilter.value.toUpperCase();
+    pins = pins.filter((p: any) =>
+      p.pin?.toUpperCase().includes(q) || p.signal?.toUpperCase().includes(q) || p.type?.toUpperCase().includes(q)
+    );
+  }
+  pinPage.value = 0;
+  return pins;
+});
+
+const paginatedPins = computed(() => {
+  const start = pinPage.value * pinPageSize;
+  return filteredPins.value.slice(start, start + pinPageSize);
+});
+const deviceVendorFilter = ref("All");
+
 const deviceVendors = computed(() => {
   const vendors = new Set(deviceImported.value.map((d: any) => d.vendor || "Unknown"));
   return [...vendors].sort();
@@ -972,10 +1032,13 @@ function toggleDeviceExpand(device: string) {
 
 async function viewDevicePins(device: string) {
   try {
-    const res = await fetch(`${apiBase}/api/sdk/device/${encodeURIComponent(device)}/pins?peripheral_type=`);
+    const res = await fetch(`${apiBase}/api/sdk/device/${encodeURIComponent(device)}/pins`);
     const data = await res.json();
     devicePinsPreview.value = data.pins || [];
     devicePinsDevice.value = device;
+    pinFilter.value = "";
+    pinTypeFilter.value = "";
+    pinPage.value = 0;
   } catch { /* ignore */ }
 }
 

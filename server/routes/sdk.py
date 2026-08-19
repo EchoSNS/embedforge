@@ -666,7 +666,7 @@ async def get_device_pins(device_name: str, peripheral_type: str = ""):
         "pins": [
             {"pin": p.pin_name, "signal": p.signal, "af": p.af_number,
              "peripheral": p.peripheral, "type": p.peripheral_type}
-            for p in pins[:500]
+            for p in pins
         ],
     }
 
